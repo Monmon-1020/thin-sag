@@ -1,45 +1,58 @@
-use clap::Parser;
-use anyhow::{Context, Result};
+#![allow(clippy::needless_return)]
+use anyhow::{Result, Context};
+use clap::{Parser, Subcommand};
+
 
 mod vault;
 mod ui_adapter;
+mod models;
+mod api;
+mod job;
+mod error;
 
-/// コマンドライン引数定義
 #[derive(Parser)]
 #[command(author, version, about)]
-struct Opt {
-    /// 起動するアプリの Bundle ID
-    #[arg(long)]
-    app: String,
-
-    /// Keychain のアイテムラベル
-    #[arg(long)]
-    secret: String,
-
-    /// 入力テキスト ( "{secret}" をプレースホルダとする )
-    #[arg(long, default_value = "Hello {secret}!")]
-    text: String,
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
 }
 
-fn main() -> Result<()> {
-    // 1) 引数パース
-    let opt = Opt::parse();
+#[derive(Subcommand)]
+enum Commands {
+    /// これまでの CLI 方式 
+    Run {
+        #[arg(long)] app: String,
+        #[arg(long)] secret: String,
+        #[arg(long, default_value = "Hello {secret}!")] text: String,
+    },
+    /// 新モード：API サーバ
+    Serve {
+        #[arg(long, default_value_t = 8900)] port: u16,
+    },
+}
 
-    // 2) Keychain からシークレット取得
-    let secret = vault::get_secret(&opt.secret)
-        .context("Keychain からシークレットを取得できませんでした")?;
+#[tokio::main]
+async fn main() -> Result<()> {
+    match Cli::parse().command {
+        Commands::Run { app, secret, text } => {
+            let secret_val = vault::get_secret(&secret)?;
+            let text = text.replace("{secret}", &secret_val);
+            ui_adapter::launch_app(&app)?;
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            ui_adapter::type_text(&text)?;
+        }
+        Commands::Serve { port } => {
+            let router = api::build_router();
+            println!("🔌  API サーバ起動 http://127.0.0.1:{port}");
 
-    // 3) テキストに埋め込み
-    let input_text = opt.text.replace("{secret}", &secret);
+            // ① TCP リスナーを作成
+            let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
 
-    // 4) アプリ起動
-    ui_adapter::launch_app(&opt.app)
-        .context(format!("アプリ {} の起動に失敗しました", &opt.app))?;
-
-    // 5) 少し待ってから入力
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    ui_adapter::type_text(&input_text)
-        .context("テキスト入力に失敗しました")?;
-
+            // ② axum::serve を使って HTTP サーバを起動
+            axum::serve(listener, router.into_make_service())
+                .await
+                .context("サーバ起動中にエラーが発生しました")?;
+        }
+    }
     Ok(())
 }
