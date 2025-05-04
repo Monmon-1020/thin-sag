@@ -7,6 +7,8 @@ mod vault;
 mod ui_adapter;
 mod models;
 mod api;
+mod job;
+mod error;
 
 #[derive(Parser)]
 #[command(author, version, about)]

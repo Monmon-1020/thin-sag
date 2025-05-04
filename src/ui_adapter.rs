@@ -1,11 +1,6 @@
 use anyhow::Result;
-use core_foundation::string::CFString;
-use objc::{class, msg_send, sel, sel_impl};
-use core_graphics::event::{CGEvent, CGEventTapLocation, CGEventType};
+use core_graphics::event::{CGEvent, CGEventTapLocation};
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
-use core_foundation::base::TCFType;
-use objc::runtime::{Class, Object};
-use anyhow::anyhow;
 use std::process::Command;
 
 /// Bundle ID でアプリを起動

@@ -7,14 +7,18 @@ pub struct RunRequest {
     pub text:   String,   // "Hello {secret}!"
 }
 
-#[derive(Serialize)]
+#[derive(Debug, serde::Serialize)]
 pub struct RunResponse {
-    pub ok: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
+    pub success: bool,
+    pub message: Option<String>,
 }
 
 impl RunResponse {
-    pub fn success() -> Self { Self { ok: true,  error: None } }
-    pub fn fail<E: ToString>(e: E) -> Self { Self { ok: false, error: Some(e.to_string()) } }
+    pub fn success() -> Self {
+        Self { success: true, message: None }
+    }
+
+    pub fn fail(message: String) -> Self {
+        Self { success: false, message: Some(message) }
+    }
 }
