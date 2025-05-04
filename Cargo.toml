@@ -2,17 +2,18 @@
 name = "thin-sag"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 [dependencies]
 clap = { version = "4.2.7", features = ["derive"] }
-# macOS Keychain 操作用
+
 security-framework = "3.2.0"
-# macOS Accessibility + App 起動用
+
 core-foundation = "0.10.0"
 core-graphics = "0.24.0"
 objc = "0.2.7"
-# エラーハンドリングを簡潔に
+
 anyhow = "1.0.98"
-# ロギング (オプション)
+
 log = "0.4.27"
 env_logger = "0.11.8"

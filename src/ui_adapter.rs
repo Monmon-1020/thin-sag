@@ -2,25 +2,27 @@ use anyhow::Result;
 use core_foundation::string::CFString;
 use objc::{class, msg_send, sel, sel_impl};
 use core_graphics::event::{CGEvent, CGEventTapLocation, CGEventType};
-use core_graphics::event_source::CGEventSourceStateID;
-use core_graphics::event_source::CGEventSource;
+use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use core_foundation::base::TCFType;
-use objc::runtime::Class;
+use objc::runtime::{Class, Object};
 use anyhow::anyhow;
-/// Bundle ID でアプリを起動
+use std::process::Command;
 
+/// Bundle ID でアプリを起動
 pub fn launch_app(bundle_id: &str) -> Result<()> {
-    unsafe {
-        let ns_workspace = Class::get("NSWorkspace")
-            .ok_or_else(|| anyhow!("NSWorkspace クラスが見つかりません"))?;
-        let workspace: *mut objc::runtime::Object = msg_send![ns_workspace, sharedWorkspace];
-        let () = msg_send![workspace,
-            launchAppWithBundleIdentifier: CFString::new(bundle_id).as_CFType()
-            options: 0
-            configuration: std::ptr::null_mut::<objc::runtime::Object>()
-        ];
-    }
-    Ok(())
+    // -b で Bundle ID 指定
+    Command::new("open")
+        .arg("-b")
+        .arg(bundle_id)
+        .status()
+        .map_err(|e| anyhow::anyhow!("open コマンド実行失敗: {}", e))
+        .and_then(|st| {
+            if st.success() {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("open コマンドが非正常終了: {}", st))
+            }
+        })
 }
 
 /// 文字列を一文字ずつキー入力として送信
@@ -28,7 +30,6 @@ pub fn type_text(text: &str) -> Result<()> {
     let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
         .map_err(|_| anyhow::anyhow!("CGEventSource の作成に失敗しました"))?;
     for c in text.chars() {
-        // ここでは仮に 'a' のキーコード (0) を使用 - 実際には各文字に対応するキーコードを取得する必要があります
         let keycode = get_keycode(c);
         let down = CGEvent::new_keyboard_event(source.clone(), keycode, true)
             .map_err(|_| anyhow::anyhow!("CGEvent の作成に失敗しました"))?;
@@ -36,7 +37,7 @@ pub fn type_text(text: &str) -> Result<()> {
         let up = CGEvent::new_keyboard_event(source.clone(), keycode, false)
             .map_err(|_| anyhow::anyhow!("CGEvent の作成に失敗しました"))?;
         up.post(CGEventTapLocation::HID);
-        std::thread::sleep(std::time::Duration::from_millis(50)); // キー連打にならないように少し待つ
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
     Ok(())
 }
@@ -71,9 +72,23 @@ fn get_keycode(c: char) -> u16 {
         'y' => 16,
         'z' => 6,
         ' ' => 49,
-        '!' => 33, // Shift + 1
+        '!' => 33,
         ',' => 43,
         '.' => 47,
-        _ => 0, // デフォルトは 'a'
+        '0' => 29,
+        '1' => 18,
+        '2' => 19,
+        '3' => 20,
+        '4' => 21,
+        '5' => 23,
+        '6' => 22,
+        '7' => 26,
+        '8' => 28,
+        '9' => 25,
+        ':' => 41,
+        ';' => 39,
+        '=' => 30,
+        '-' => 27,
+        _ => 0,
     }
 }
