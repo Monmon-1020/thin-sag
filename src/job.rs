@@ -3,6 +3,13 @@ use uuid::Uuid;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
+use regex::Regex;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    // {secret.<label>} の <label> 部分をキャプチャ
+    static ref SECRET_REGEX: Regex = Regex::new(r"\{secret\.([a-zA-Z0-9_-]+)\}").unwrap();
+}
 
 #[derive(Clone, Copy, serde::Serialize, Debug)]
 pub enum JobStatus {
@@ -74,13 +81,35 @@ impl JobManager {
             }
         });
 
-        tokio::spawn(async move {  // 新しいワーカー
+        // 新しいワーカータスク
+        tokio::spawn(async move {
             while let Some((id, actions)) = rx_json.recv().await {
                 {
                     let mut guard = map_clone_2.write().await;
                     guard.get_mut(&id).unwrap().status = JobStatus::Running;
                 }
-                let res = execute_actions(&actions.0);
+
+                // 1) 全 Action を走査して secret プレースホルダを展開
+                let mut expanded_actions = Vec::with_capacity(actions.0.len());
+                for act in actions.0 {
+                    let act = match act {
+                        Action::Type { text } => {
+                            let processed_text = SECRET_REGEX
+                                .replace_all(&text, |caps: &regex::Captures| {
+                                    let label = &caps[1];
+                                    vault::get_secret(label).unwrap_or_else(|_| "".into())
+                                })
+                                .to_string();
+                            Action::Type { text: processed_text }
+                        }
+                        // 他の act にもターゲットやキーにプレースホルダがあるなら同様に
+                        other => other,
+                    };
+                    expanded_actions.push(act);
+                }
+
+                // 2) プレースホルダ展開済みアクションを実行
+                let res = execute_actions(&expanded_actions);
 
                 let mut guard = map_clone_2.write().await;
                 let entry = guard.get_mut(&id).unwrap();
