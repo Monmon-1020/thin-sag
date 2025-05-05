@@ -4,11 +4,13 @@ use clap::{Parser, Subcommand};
 
 
 mod vault;
-mod ui_adapter;
 mod models;
 mod api;
 mod job;
 mod error;
+mod action;
+mod adapter;
+mod mac_ax;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -37,9 +39,10 @@ async fn main() -> Result<()> {
         Commands::Run { app, secret, text } => {
             let secret_val = vault::get_secret(&secret)?;
             let text = text.replace("{secret}", &secret_val);
-            ui_adapter::launch_app(&app)?;
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            ui_adapter::type_text(&text)?;
+            // ui_adapter::launch_app(&app)?;  // 削除
+            // std::thread::sleep(std::time::Duration::from_secs(1)); // 削除
+            // ui_adapter::type_text(&text)?;  // 削除
+            println!("⚠️  CLI モードは廃止されました。API サーバモードを使用してください。");
         }
         Commands::Serve { port } => {
             let router = api::build_router();
