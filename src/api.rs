@@ -1,6 +1,7 @@
 use axum::{routing::{post,get}, Json, Router, extract::{State, Path}};
-use crate::{models::*, job::JobManager, error::ApiError};
+use crate::{models::*, job::JobManager, error::ApiError, action::ActionList};
 use std::sync::Arc;
+use axum::http::StatusCode; 
 
 #[derive(Clone)]
 pub struct AppState {
@@ -32,10 +33,20 @@ pub async fn job_status(
     }
 }
 
+pub async fn run_json(
+    State(st): State<Arc<AppState>>,
+    Json(list): Json<ActionList>,
+) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    // 実行リクエストをキューへ
+    let id = st.job_manager.enqueue_json(list).await;
+    Ok((StatusCode::ACCEPTED, Json(serde_json::json!({"job_id": id}))))
+}
+
 pub fn build_router() -> Router {
     let state = Arc::new(AppState{ job_manager: Arc::new(JobManager::new()) });
     Router::new()
         .route("/run", post(run_handler))
         .route("/job/:id", get(job_status))
+        .route("/run-json", post(run_json))
         .with_state(state)
 }

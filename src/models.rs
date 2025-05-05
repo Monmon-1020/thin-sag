@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct RunRequest {
     pub bundle: String,   // 例: "com.apple.Notes"
     pub secret: String,   // Keychain ラベル
