@@ -89,7 +89,7 @@ impl JobManager {
                     guard.get_mut(&id).unwrap().status = JobStatus::Running;
                 }
 
-                // 1) 全 Action を走査して secret プレースホルダを展開
+                // 1 全 Action を走査して secret プレースホルダを展開
                 let mut expanded_actions = Vec::with_capacity(actions.0.len());
                 for act in actions.0 {
                     let act = match act {

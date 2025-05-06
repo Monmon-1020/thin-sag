@@ -1,0 +1,10 @@
+allow_acts: ["launch","type","wait","click","scroll","keypress"]
+denied_targets:
+  - "*.phishing.com"
+  - "com.malware.*"
+max_wait_ms: 30000
+click_bounds:
+  x_min: 0
+  x_max: 2560
+  y_min: 0
+  y_max: 1600
