@@ -2,7 +2,7 @@ use axum::{routing::{post,get}, Json, Router, extract::{State, Path}};
 use crate::{models::*, job::JobManager, error::ApiError, action::ActionList};
 use std::sync::Arc;
 use axum::http::StatusCode; 
-
+use crate::policy::validate_actions;
 #[derive(Clone)]
 pub struct AppState {
     job_manager: Arc<JobManager>,
@@ -37,6 +37,10 @@ pub async fn run_json(
     State(st): State<Arc<AppState>>,
     Json(list): Json<ActionList>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    // 🔒 ポリシー検証
+    if let Err(e) = validate_actions(&list) {
+        return Err(ApiError::BadRequest(e));
+    }
     // 実行リクエストをキューへ
     let id = st.job_manager.enqueue_json(list).await;
     Ok((StatusCode::ACCEPTED, Json(serde_json::json!({"job_id": id}))))
