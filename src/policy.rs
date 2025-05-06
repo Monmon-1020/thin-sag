@@ -14,6 +14,8 @@ pub struct Policy {
     pub denied_targets: Vec<String>,
     pub max_wait_ms: Option<u64>,
     pub click_bounds: Option<Bounds>,
+    pub allow_snapshot: bool,
+    pub max_snapshot_per_min: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -27,6 +29,8 @@ impl Default for Policy {
             denied_targets: vec![],
             max_wait_ms: Some(30_000),
             click_bounds: None,
+            allow_snapshot: true,
+            max_snapshot_per_min: Some(10),
         }
     }
 }
@@ -34,7 +38,7 @@ impl Default for Policy {
 /// シングルトンキャッシュ
 static POLICY: OnceCell<RwLock<Policy>> = OnceCell::new();
 
-fn load() -> Result<std::sync::Arc<Policy>> {
+pub(crate) fn load() -> Result<std::sync::Arc<Policy>> {
     POLICY.get_or_try_init(|| {
         let path = dirs::home_dir().unwrap_or(PathBuf::from("/"))
                    .join(DEFAULT_PATH);

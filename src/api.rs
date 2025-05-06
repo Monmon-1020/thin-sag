@@ -1,11 +1,41 @@
 use axum::{routing::{post,get}, Json, Router, extract::{State, Path}};
-use crate::{models::*, job::JobManager, error::ApiError, action::ActionList};
+use crate::{action::ActionList, error::ApiError, job::JobManager, models::*, tree::UiNode};
 use std::sync::Arc;
 use axum::http::StatusCode; 
 use crate::policy::validate_actions;
+use crate::{tree::snapshot_tree, policy::load as load_policy};
+use once_cell::sync::Lazy;
+use std::sync::atomic::{AtomicU32, Ordering};
+use tokio::time::{Instant, Duration};
+
+static SNAP_COUNT: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
+static SNAP_RESET: Lazy<tokio::sync::Mutex<Instant>> =
+    Lazy::new(|| tokio::sync::Mutex::new(Instant::now()));
 #[derive(Clone)]
 pub struct AppState {
     job_manager: Arc<JobManager>,
+}
+
+pub async fn snapshot_handler() -> Result<Json<UiNode>, ApiError> {
+    // ポリシー
+    println!("[DEBUG] /snapshot called");
+    let pol = load_policy().map_err(ApiError::Internal)?;
+    if !pol.allow_snapshot {
+        return Err(ApiError::BadRequest(anyhow::anyhow!("snapshot disabled")));
+    }
+    // rate‑limit
+    {
+        let mut guard = SNAP_RESET.lock().await;
+        if guard.elapsed() > Duration::from_secs(60) {
+            SNAP_COUNT.store(0, Ordering::SeqCst);
+            *guard = Instant::now();
+        }
+    }
+    if SNAP_COUNT.fetch_add(1, Ordering::SeqCst) >= pol.max_snapshot_per_min.unwrap_or(10) {
+        return Err(ApiError::BadRequest(anyhow::anyhow!("rate limit")));
+    }
+    let tree = snapshot_tree().map_err(ApiError::Internal)?;
+    Ok(Json(tree))
 }
 
 pub async fn run_handler(
@@ -52,5 +82,6 @@ pub fn build_router() -> Router {
         .route("/run", post(run_handler))
         .route("/job/:id", get(job_status))
         .route("/run-json", post(run_json))
+        .route("/snapshot", get(snapshot_handler))
         .with_state(state)
 }

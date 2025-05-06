@@ -5,6 +5,7 @@ use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 use regex::Regex;
 use lazy_static::lazy_static;
+use crate::mask::cache_secret;
 
 lazy_static! {
     // {secret.<label>} の <label> 部分をキャプチャ
@@ -153,13 +154,19 @@ fn execute_actions(actions: &[Action]) -> Result<(), ApiError> {
 
     for act in actions {
         match act {
-            Action::Launch{target}        => ui.launch(target)?,
-            Action::Type{text}            => ui.type_text(text)?,
-            Action::Wait{ms}              => ui.wait_ms(*ms),
-            Action::Click{selector,x,y}   => ui.click(selector.as_deref(), *x, *y)?,
-            Action::Scroll{dy}            => ui.scroll(*dy)?,
-            Action::Keypress{key}         => ui.keypress(key)?,
-            Action::Unsupported           => return Err(ApiError::BadRequest(anyhow::anyhow!(" unsupported act"))),
+            Action::Launch{target}      => ui.launch(target)?,
+            Action::Type{text} => {
+                // ① マスク用キャッシュに登録
+                cache_secret(text);
+                // ② 実際のキー入力
+                ui.type_text(text)?;
+            }
+            Action::Wait{ms}            => ui.wait_ms(*ms),
+            Action::Click{selector,x,y} => ui.click(selector.as_deref(), *x, *y)?,
+            Action::Scroll{dy}          => ui.scroll(*dy)?,
+            Action::Keypress{key}       => ui.keypress(key)?,
+            Action::Unsupported         =>
+                return Err(ApiError::BadRequest(anyhow::anyhow!("unsupported act"))),
         }
     }
     Ok(())
