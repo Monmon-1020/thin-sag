@@ -3,6 +3,7 @@
 use anyhow::{Result, anyhow};
 use core_foundation::base::{CFTypeRef, TCFType};
 use core_foundation::string::CFString;
+use core_graphics::display::CGRect;
 use serde::Serialize;
 use std::ptr;
 use std::mem;
@@ -18,13 +19,27 @@ extern "C" {
         value: *mut CFTypeRef,
     ) -> i32; // AXError
     fn CFRelease(cf: CFTypeRef);
+    fn AXValueGetValue(value: CFTypeRef, valueType: u32, ptr: *mut std::ffi::c_void) -> bool;
 }
 
+const kAXValueCGPointType: u32 = 2; // AXValueType for CGPoint
+const kAXValueCGSizeType: u32  = 4; // AXValueType for CGSize
+const kAXValueCGRectType: u32 = 3; // AXValueType for CGRect
+ 
+
+#[derive(Serialize)]
+pub struct Rect {
+    pub x:      f64,
+    pub y:      f64,
+    pub width:  f64,
+    pub height: f64,
+}
 #[derive(Serialize)]
 pub struct UiNode {
-    pub role:  String,
-    pub label: String,
-    pub value: Option<String>,
+    pub role:     String,
+    pub label:    String,
+    pub value:    Option<String>,
+    pub rect:     Option<Rect>,
     pub children: Vec<UiNode>,
 }
 
@@ -70,6 +85,37 @@ unsafe fn build(node: *mut Object, depth: usize) -> UiNode {
         .and_then(|cf| unsafe { cf_to_string(cf) })
         .as_deref()
         .map(crate::mask::mask_text);
+    // ① まず AXFrame（CGRect）を試す (Window に最適)
+    let rect = get_attr(node, "AXFrame").and_then(|cf| {
+        // AXValue → CGRect
+        let mut frame = mem::MaybeUninit::<CGRect>::uninit();
+        let ok = unsafe { AXValueGetValue(cf, kAXValueCGRectType, frame.as_mut_ptr() as *mut _) };
+        unsafe { CFRelease(cf) };
+        if ok {
+            let f = unsafe { frame.assume_init() };
+            Some(Rect { x: f.origin.x, y: f.origin.y, width: f.size.width, height: f.size.height })
+        } else { None }
+    })
+    // ② AXFrame 取れなければ Position + Size で補う
+    .or_else(|| {
+        let pos = get_attr(node, "AXPosition").and_then(|cf| {
+            let mut pt = mem::MaybeUninit::<core_graphics::geometry::CGPoint>::uninit();
+            let ok = unsafe { AXValueGetValue(cf, kAXValueCGPointType, pt.as_mut_ptr() as *mut _) };
+            unsafe { CFRelease(cf) };
+            if ok { Some(unsafe { pt.assume_init() }) } else { None }
+        });
+        let size = get_attr(node, "AXSize").and_then(|cf| {
+            let mut sz = mem::MaybeUninit::<core_graphics::geometry::CGSize>::uninit();
+            let ok = unsafe { AXValueGetValue(cf, kAXValueCGSizeType, sz.as_mut_ptr() as *mut _) };
+            unsafe { CFRelease(cf) };
+            if ok { Some(unsafe { sz.assume_init() }) } else { None }
+        });
+        if let (Some(pt), Some(sz)) = (pos, size) {
+            Some(Rect { x: pt.x, y: pt.y, width: sz.width, height: sz.height })
+        } else {
+            None
+        }
+    });
 
     // children
     let mut children = Vec::new();
@@ -85,24 +131,43 @@ unsafe fn build(node: *mut Object, depth: usize) -> UiNode {
         }
     }
 
-    UiNode { role, label, value, children }
+    UiNode { role, label, value, rect, children }
 }
 
 /// アクティブアプリの AX ツリーを取得
 pub fn snapshot_tree() -> Result<UiNode> {
     unsafe {
+         // ① 最前面アプリの PID を取得
         let ws_cls = Class::get("NSWorkspace")
             .ok_or_else(|| anyhow!("NSWorkspace not found"))?;
         let ws: *mut Object = msg_send![ws_cls, sharedWorkspace];
         let app: *mut Object = msg_send![ws, frontmostApplication];
         let pid: i32 = msg_send![app, processIdentifier];
 
+        // ② AXUIElementCreateApplication でアプリ要素を作成
         let ax_app = AXUIElementCreateApplication(pid);
         if ax_app.is_null() {
             return Err(anyhow!("AXUIElementCreateApplication failed"));
         }
-        let root = build(ax_app, 0);
+
+        // ③ ウィンドウ配列を取得 (AXWindows)
+        let windows_cf = get_attr(ax_app, "AXWindows")
+            .ok_or_else(|| anyhow!("no AXWindows"))?;
+        let arr: *mut Object = mem::transmute(windows_cf);
+        let count: usize = msg_send![arr, count];
+
+        // ④ 最初のウィンドウ要素にフォーカス
+        if count == 0 {
+            CFRelease(windows_cf);
+            CFRelease(ax_app as CFTypeRef);
+            return Err(anyhow!("no frontmost window"));
+        }
+        let win: *mut Object = msg_send![arr, objectAtIndex: 0];
+        CFRelease(windows_cf);
         CFRelease(ax_app as CFTypeRef);
+
+        // ⑤ build() をウィンドウ要素で呼ぶことで rect を取得可能に
+        let root = build(win, 0);
         Ok(root)
     }
 }
