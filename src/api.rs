@@ -1,4 +1,5 @@
 use crate::policy::validate_actions;
+use crate::tree::WindowSelector;
 use crate::{action::ActionList, error::ApiError, job::JobManager, models::*, tree::UiNode};
 use crate::{policy::load as load_policy, tree::snapshot_tree};
 use axum::http::StatusCode;
@@ -8,6 +9,7 @@ use axum::{
     Json, Router,
 };
 use once_cell::sync::Lazy;
+use serde::Deserialize;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tokio::time::{Duration, Instant};
@@ -20,7 +22,21 @@ pub struct AppState {
     job_manager: Arc<JobManager>,
 }
 
-pub async fn snapshot_handler() -> Result<Json<UiNode>, ApiError> {
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum WindowParam {
+    Front(String),
+    Obj { window: WindowArg },
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum WindowArg {
+    Index(usize),
+    Title(String),
+    Doc(String),
+}
+
+pub async fn snapshot_handler(Json(body): Json<WindowParam>) -> Result<Json<UiNode>, ApiError> {
     // ポリシー
     println!("[DEBUG] /snapshot called");
     let pol = load_policy().map_err(ApiError::Internal)?;
@@ -38,7 +54,24 @@ pub async fn snapshot_handler() -> Result<Json<UiNode>, ApiError> {
     if SNAP_COUNT.fetch_add(1, Ordering::SeqCst) >= pol.max_snapshot_per_min.unwrap_or(10) {
         return Err(ApiError::BadRequest(anyhow::anyhow!("rate limit")));
     }
-    let tree = snapshot_tree().map_err(ApiError::Internal)?;
+
+    let sel = match body {
+        WindowParam::Front(s) => {
+            println!("[DEBUG] Front window parameter: {}", s);
+            WindowSelector::Front
+        }
+        WindowParam::Obj {
+            window: WindowArg::Index(i),
+        } => WindowSelector::Index(i),
+        WindowParam::Obj {
+            window: WindowArg::Title(t),
+        } => WindowSelector::Title(t),
+        WindowParam::Obj {
+            window: WindowArg::Doc(d),
+        } => WindowSelector::Doc(d),
+    };
+    // validate_snapshot_policy()?;
+    let tree = snapshot_tree(sel).map_err(ApiError::BadRequest)?;
     Ok(Json(tree))
 }
 
@@ -91,6 +124,6 @@ pub fn build_router() -> Router {
         .route("/run", post(run_handler))
         .route("/job/:id", get(job_status))
         .route("/run-json", post(run_json))
-        .route("/snapshot", get(snapshot_handler))
+        .route("/snapshot", post(snapshot_handler))
         .with_state(state)
 }

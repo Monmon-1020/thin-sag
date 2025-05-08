@@ -4,6 +4,7 @@ use anyhow::{anyhow, Result};
 use core_foundation::base::{CFTypeRef, TCFType};
 use core_foundation::string::CFString;
 use core_graphics::display::CGRect;
+use globset::Glob;
 use objc::runtime::{Class, Object};
 use objc::{msg_send, sel, sel_impl};
 use serde::Serialize;
@@ -67,6 +68,56 @@ fn get_attr(element: *mut Object, name: &str) -> Option<CFTypeRef> {
             None
         }
     }
+}
+
+/// AXWindows を返す
+unsafe fn list_windows(app_ax: *mut Object) -> Vec<*mut Object> {
+    if let Some(cf_arr) = get_attr(app_ax, "AXWindows") {
+        let arr: *mut Object = mem::transmute(cf_arr);
+        let count: usize = msg_send![arr, count];
+        (0..count)
+            .map(|i| {
+                let w: *mut Object = msg_send![arr, objectAtIndex: i];
+                w
+            })
+            .collect()
+    } else {
+        vec![]
+    }
+}
+
+unsafe fn select_window(wins: &[*mut Object], sel: &WindowSelector) -> Option<*mut Object> {
+    match sel {
+        WindowSelector::Front => wins.first().copied(),
+        WindowSelector::Index(i) => wins.get(*i).copied(),
+        WindowSelector::Title(glob) => {
+            let g = Glob::new(glob).ok()?.compile_matcher();
+            wins.iter()
+                .find(|w| {
+                    get_attr(**w, "AXTitle")
+                        .and_then(|cf| cf_to_string(cf))
+                        .map(|t| g.is_match(&t))
+                        .unwrap_or(false)
+                })
+                .copied()
+        }
+        WindowSelector::Doc(path) => wins
+            .iter()
+            .find(|w| {
+                get_attr(**w, "AXDocument")
+                    .and_then(|cf| cf_to_string(cf))
+                    .map(|p| p == *path)
+                    .unwrap_or(false)
+            })
+            .copied(),
+    }
+}
+
+pub enum WindowSelector {
+    Front,
+    Index(usize),
+    Title(String),
+    Doc(String),
 }
 
 /// 再帰的に AX ツリーを UiNode に変換
@@ -166,7 +217,7 @@ unsafe fn build(node: *mut Object, depth: usize) -> UiNode {
 }
 
 /// アクティブアプリの AX ツリーを取得
-pub fn snapshot_tree() -> Result<UiNode> {
+pub fn snapshot_tree(sel: WindowSelector) -> Result<UiNode> {
     unsafe {
         // ① 最前面アプリの PID を取得
         let ws_cls = Class::get("NSWorkspace").ok_or_else(|| anyhow!("NSWorkspace not found"))?;
@@ -180,23 +231,8 @@ pub fn snapshot_tree() -> Result<UiNode> {
             return Err(anyhow!("AXUIElementCreateApplication failed"));
         }
 
-        // ③ ウィンドウ配列を取得 (AXWindows)
-        let windows_cf = get_attr(ax_app, "AXWindows").ok_or_else(|| anyhow!("no AXWindows"))?;
-        let arr: *mut Object = mem::transmute(windows_cf);
-        let count: usize = msg_send![arr, count];
-
-        // ④ 最初のウィンドウ要素にフォーカス
-        if count == 0 {
-            CFRelease(windows_cf);
-            CFRelease(ax_app as CFTypeRef);
-            return Err(anyhow!("no frontmost window"));
-        }
-        let win: *mut Object = msg_send![arr, objectAtIndex: 0];
-        CFRelease(windows_cf);
-        CFRelease(ax_app as CFTypeRef);
-
-        // ⑤ build() をウィンドウ要素で呼ぶことで rect を取得可能に
-        let root = build(win, 0);
-        Ok(root)
+        let wins = list_windows(ax_app);
+        let target = select_window(&wins, &sel).ok_or_else(|| anyhow!("window not found"))?;
+        Ok(build(target, 0))
     }
 }

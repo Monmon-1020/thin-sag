@@ -1,9 +1,7 @@
 use crate::adapter::UiAdapter;
 use anyhow::{anyhow, Result};
 use core_graphics::{
-    event::{
-        CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton,
-    },
+    event::{CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton},
     event_source::{CGEventSource, CGEventSourceStateID},
     geometry::CGPoint,
 };
