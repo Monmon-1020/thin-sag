@@ -1,10 +1,18 @@
-use crate::{error::ApiError, mac_ax::MacAdapter, action::{Action,ActionList}, adapter::UiAdapter, models::{RunResponse, RunRequest}, vault};
-use uuid::Uuid;
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::RwLock;
-use tokio::sync::mpsc;
-use regex::Regex;
+use crate::mask::cache_secret;
+use crate::{
+    action::{Action, ActionList},
+    adapter::UiAdapter,
+    error::ApiError,
+    mac_ax::MacAdapter,
+    models::{RunRequest, RunResponse},
+    vault,
+};
 use lazy_static::lazy_static;
+use regex::Regex;
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::mpsc;
+use tokio::sync::RwLock;
+use uuid::Uuid;
 
 lazy_static! {
     // {secret.<label>} の <label> 部分をキャプチャ
@@ -55,14 +63,19 @@ impl JobManager {
                 // 実行 (古い処理)
                 let res = (|| -> Result<RunResponse, ApiError> {
                     if let JobRequest::Old(req) = req {
-                        let secret = vault::get_secret(&req.secret)
-                            .map_err(ApiError::Internal)?;
+                        let secret = vault::get_secret(&req.secret).map_err(ApiError::Internal)?;
                         let text = req.text.replace("{secret}", &secret);
-                        MacAdapter::new().launch(&req.bundle).map_err(ApiError::Internal)?;
-                        MacAdapter::new().type_text(&text).map_err(ApiError::Internal)?;
+                        MacAdapter::new()
+                            .launch(&req.bundle)
+                            .map_err(ApiError::Internal)?;
+                        MacAdapter::new()
+                            .type_text(&text)
+                            .map_err(ApiError::Internal)?;
                         Ok(RunResponse::success())
                     } else {
-                        Err(ApiError::BadRequest(anyhow::anyhow!("Old API called with new request")))
+                        Err(ApiError::BadRequest(anyhow::anyhow!(
+                            "Old API called with new request"
+                        )))
                     }
                 })();
 
@@ -100,7 +113,9 @@ impl JobManager {
                                     vault::get_secret(label).unwrap_or_else(|_| "".into())
                                 })
                                 .to_string();
-                            Action::Type { text: processed_text }
+                            Action::Type {
+                                text: processed_text,
+                            }
                         }
                         // 他の act にもターゲットやキーにプレースホルダがあるなら同様に
                         other => other,
@@ -126,19 +141,38 @@ impl JobManager {
             }
         });
 
-        Self { map, sender: tx, sender_json: tx_json } // sender_json 追加
+        Self {
+            map,
+            sender: tx,
+            sender_json: tx_json,
+        } // sender_json 追加
     }
 
     pub async fn enqueue(&self, req: RunRequest) -> String {
         let id = Uuid::new_v4().to_string();
-        self.map.write().await.insert(id.clone(), JobResult{status:JobStatus::Pending,output:None});
-        self.sender.send((id.clone(), JobRequest::Old(req))).await.unwrap();
+        self.map.write().await.insert(
+            id.clone(),
+            JobResult {
+                status: JobStatus::Pending,
+                output: None,
+            },
+        );
+        self.sender
+            .send((id.clone(), JobRequest::Old(req)))
+            .await
+            .unwrap();
         id
     }
 
     pub async fn enqueue_json(&self, actions: ActionList) -> String {
         let id = Uuid::new_v4().to_string();
-        self.map.write().await.insert(id.clone(), JobResult{status:JobStatus::Pending,output:None});
+        self.map.write().await.insert(
+            id.clone(),
+            JobResult {
+                status: JobStatus::Pending,
+                output: None,
+            },
+        );
         self.sender_json.send((id.clone(), actions)).await.unwrap();
         id
     }
@@ -153,13 +187,20 @@ fn execute_actions(actions: &[Action]) -> Result<(), ApiError> {
 
     for act in actions {
         match act {
-            Action::Launch{target}        => ui.launch(target)?,
-            Action::Type{text}            => ui.type_text(text)?,
-            Action::Wait{ms}              => ui.wait_ms(*ms),
-            Action::Click{selector,x,y}   => ui.click(selector.as_deref(), *x, *y)?,
-            Action::Scroll{dy}            => ui.scroll(*dy)?,
-            Action::Keypress{key}         => ui.keypress(key)?,
-            Action::Unsupported           => return Err(ApiError::BadRequest(anyhow::anyhow!(" unsupported act"))),
+            Action::Launch { target } => ui.launch(target)?,
+            Action::Type { text } => {
+                // ① マスク用キャッシュに登録
+                cache_secret(text);
+                // ② 実際のキー入力
+                ui.type_text(text)?;
+            }
+            Action::Wait { ms } => ui.wait_ms(*ms),
+            Action::Click { selector, x, y } => ui.click(selector.as_deref(), *x, *y)?,
+            Action::Scroll { dy } => ui.scroll(*dy)?,
+            Action::Keypress { key } => ui.keypress(key)?,
+            Action::Unsupported => {
+                return Err(ApiError::BadRequest(anyhow::anyhow!("unsupported act")))
+            }
         }
     }
     Ok(())

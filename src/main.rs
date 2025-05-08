@@ -1,17 +1,18 @@
 #![allow(clippy::needless_return)]
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
-
-mod vault;
-mod models;
-mod api;
-mod job;
-mod error;
 mod action;
 mod adapter;
+mod api;
+mod error;
+mod job;
 mod mac_ax;
+mod mask;
+mod models;
 mod policy;
+mod tree;
+mod vault;
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Cli {
@@ -21,15 +22,19 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// これまでの CLI 方式 
+    /// これまでの CLI 方式
     Run {
-        #[arg(long)] app: String,
-        #[arg(long)] secret: String,
-        #[arg(long, default_value = "Hello {secret}!")] text: String,
+        #[arg(long)]
+        app: String,
+        #[arg(long)]
+        secret: String,
+        #[arg(long, default_value = "Hello {secret}!")]
+        text: String,
     },
     /// 新モード：API サーバ
     Serve {
-        #[arg(long, default_value_t = 8900)] port: u16,
+        #[arg(long, default_value_t = 8900)]
+        port: u16,
     },
 }
 

@@ -1,23 +1,26 @@
-use anyhow::{Result, anyhow};
-use objc::{class, msg_send, sel, sel_impl};
+use crate::adapter::UiAdapter;
+use anyhow::{anyhow, Result};
 use core_graphics::{
-    event::{CGEvent, CGEventTapLocation, CGEventType, CGEventFlags, CGMouseButton, CGScrollEventUnit},
+    event::{CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton},
     event_source::{CGEventSource, CGEventSourceStateID},
     geometry::CGPoint,
 };
-use core_foundation::string::CFString;
-use crate::adapter::UiAdapter;
-
 
 pub struct MacAdapter;
 
 impl MacAdapter {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl UiAdapter for MacAdapter {
     fn launch(&self, target: &str) -> Result<()> {
-        std::process::Command::new("open").arg("-b").arg(target).spawn()?.wait()?;
+        std::process::Command::new("open")
+            .arg("-b")
+            .arg(target)
+            .spawn()?
+            .wait()?;
         Ok(())
     }
 
@@ -35,13 +38,15 @@ impl UiAdapter for MacAdapter {
             CGEventType::LeftMouseDown,
             pos,
             CGMouseButton::Left,
-        ).map_err(|_| anyhow!("CGEvent create error"))?;
+        )
+        .map_err(|_| anyhow!("CGEvent create error"))?;
         let up_event = CGEvent::new_mouse_event(
             src,
             CGEventType::LeftMouseUp,
             pos,
             CGMouseButton::Left, // CGMouseButton::Left を使用
-        ).map_err(|_| anyhow!("CGEvent create error"))?;
+        )
+        .map_err(|_| anyhow!("CGEvent create error"))?;
 
         down_event.post(CGEventTapLocation::HID);
         up_event.post(CGEventTapLocation::HID);
@@ -51,12 +56,16 @@ impl UiAdapter for MacAdapter {
 
     fn scroll(&self, dy: i32) -> Result<()> {
         // dy >0 → PageDown, dy<0 → PageUp とする
-        let key = if dy < 0 { 0x74 /* PageUp */ } else { 0x79 /* PageDown */ };
+        let key = if dy < 0 {
+            0x74 /* PageUp */
+        } else {
+            0x79 /* PageDown */
+        };
         let src = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
             .map_err(|_| anyhow!("CGEventSource error"))?;
         let down = CGEvent::new_keyboard_event(src.clone(), key, true)
             .map_err(|_| anyhow!("CGEvent create error"))?;
-        let up   = CGEvent::new_keyboard_event(src, key, false)
+        let up = CGEvent::new_keyboard_event(src, key, false)
             .map_err(|_| anyhow!("CGEvent create error"))?;
         down.post(CGEventTapLocation::HID);
         up.post(CGEventTapLocation::HID);
@@ -86,28 +95,29 @@ impl UiAdapter for MacAdapter {
 
     fn type_text(&self, text: &str) -> Result<()> {
         for c in text.chars() {
-            let mut mods = CGEventFlags::empty();
-            let code = character_to_keycode(c)
-                .ok_or_else(|| anyhow!("unsupported char '{}'", c))?;
+            let mods = CGEventFlags::empty();
+            let code =
+                character_to_keycode(c).ok_or_else(|| anyhow!("unsupported char '{}'", c))?;
             CGEvent::new_keyboard_event(
                 CGEventSource::new(CGEventSourceStateID::HIDSystemState)
                     .map_err(|_| anyhow!("CGEventSource::new failed"))?,
                 code,
                 true,
-            ).map_err(|_| anyhow!("key-down"))?
-             .post(CGEventTapLocation::HID);
+            )
+            .map_err(|_| anyhow!("key-down"))?
+            .post(CGEventTapLocation::HID);
 
             CGEvent::new_keyboard_event(
                 CGEventSource::new(CGEventSourceStateID::HIDSystemState)
                     .map_err(|_| anyhow!("CGEventSource::new failed"))?,
                 code,
                 false,
-            ).map_err(|_| anyhow!("key-up"))?
-             .post(CGEventTapLocation::HID);
+            )
+            .map_err(|_| anyhow!("key-up"))?
+            .post(CGEventTapLocation::HID);
         }
         Ok(())
     }
-
 
     fn wait_ms(&self, ms: u64) {
         std::thread::sleep(std::time::Duration::from_millis(ms));
@@ -171,10 +181,22 @@ fn character_to_keycode(c: char) -> Option<u16> {
 
 fn str_to_keycode(s: &str, modifiers: &mut CGEventFlags) -> Result<u16, anyhow::Error> {
     match s.to_lowercase().as_str() {
-        "shift" => { *modifiers |= CGEventFlags::CGEventFlagShift; Ok(0x38) }
-        "control" => { *modifiers |= CGEventFlags::CGEventFlagControl; Ok(0x3B) }
-        "option" => { *modifiers |= CGEventFlags::CGEventFlagAlternate; Ok(0x3A) }
-        "command" => { *modifiers |= CGEventFlags::CGEventFlagCommand; Ok(0x37) }
+        "shift" => {
+            *modifiers |= CGEventFlags::CGEventFlagShift;
+            Ok(0x38)
+        }
+        "control" => {
+            *modifiers |= CGEventFlags::CGEventFlagControl;
+            Ok(0x3B)
+        }
+        "option" => {
+            *modifiers |= CGEventFlags::CGEventFlagAlternate;
+            Ok(0x3A)
+        }
+        "command" => {
+            *modifiers |= CGEventFlags::CGEventFlagCommand;
+            Ok(0x37)
+        }
         other => character_to_keycode(other.chars().next().unwrap())
             .ok_or_else(|| anyhow!("Key '{}' not supported", other)),
     }

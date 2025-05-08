@@ -1,10 +1,10 @@
+use anyhow::Error;
+use axum::http::StatusCode;
 use axum::{
     response::{IntoResponse, Response},
     Json,
 };
 use serde::Serialize;
-use axum::http::StatusCode;
-use anyhow::Error;
 
 #[derive(Serialize)]
 pub struct ErrorBody {
@@ -21,25 +21,48 @@ pub enum ApiError {
 
 impl<E: Into<Error>> From<E> for ApiError {
     fn from(e: E) -> Self {
-        ApiError::Internal(e.into())   // デフォルトは 500
+        ApiError::Internal(e.into()) // デフォルトは 500
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         match self {
-            ApiError::BadRequest(e) =>
-                (StatusCode::BAD_REQUEST, Json(ErrorBody{ok:false,error:e.to_string()})).into_response(),
-            ApiError::NotFound(e) =>
-                (StatusCode::NOT_FOUND,   Json(ErrorBody{ok:false,error:e.to_string()})).into_response(),
-            ApiError::Conflict(e) =>
-                (StatusCode::CONFLICT,    Json(ErrorBody{ok:false,error:e.to_string()})).into_response(),
-            ApiError::Internal(e) =>
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorBody{ok:false,error:e.to_string()})).into_response(),
+            ApiError::BadRequest(e) => (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorBody {
+                    ok: false,
+                    error: e.to_string(),
+                }),
+            )
+                .into_response(),
+            ApiError::NotFound(e) => (
+                StatusCode::NOT_FOUND,
+                Json(ErrorBody {
+                    ok: false,
+                    error: e.to_string(),
+                }),
+            )
+                .into_response(),
+            ApiError::Conflict(e) => (
+                StatusCode::CONFLICT,
+                Json(ErrorBody {
+                    ok: false,
+                    error: e.to_string(),
+                }),
+            )
+                .into_response(),
+            ApiError::Internal(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorBody {
+                    ok: false,
+                    error: e.to_string(),
+                }),
+            )
+                .into_response(),
         }
     }
 }
-
 
 use std::fmt;
 
