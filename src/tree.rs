@@ -1,14 +1,14 @@
 // src/tree.rs
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use core_foundation::base::{CFTypeRef, TCFType};
 use core_foundation::string::CFString;
 use core_graphics::display::CGRect;
-use serde::Serialize;
-use std::ptr;
-use std::mem;
-use objc::runtime::{Object, Class};
+use objc::runtime::{Class, Object};
 use objc::{msg_send, sel, sel_impl};
+use serde::Serialize;
+use std::mem;
+use std::ptr;
 
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
@@ -23,29 +23,30 @@ extern "C" {
 }
 
 const kAXValueCGPointType: u32 = 2; // AXValueType for CGPoint
-const kAXValueCGSizeType: u32  = 4; // AXValueType for CGSize
+const kAXValueCGSizeType: u32 = 4; // AXValueType for CGSize
 const kAXValueCGRectType: u32 = 3; // AXValueType for CGRect
- 
 
 #[derive(Serialize)]
 pub struct Rect {
-    pub x:      f64,
-    pub y:      f64,
-    pub width:  f64,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
     pub height: f64,
 }
 #[derive(Serialize)]
 pub struct UiNode {
-    pub role:     String,
-    pub label:    String,
-    pub value:    Option<String>,
-    pub rect:     Option<Rect>,
+    pub role: String,
+    pub label: String,
+    pub value: Option<String>,
+    pub rect: Option<Rect>,
     pub children: Vec<UiNode>,
 }
 
 /// CFTypeRef → Rust String 変換
 unsafe fn cf_to_string(cf: CFTypeRef) -> Option<String> {
-    if cf.is_null() { return None }
+    if cf.is_null() {
+        return None;
+    }
     // wrap_under_get_rule を使う
     let s = CFString::wrap_under_get_rule(cf as _);
     let r = s.to_string();
@@ -86,36 +87,60 @@ unsafe fn build(node: *mut Object, depth: usize) -> UiNode {
         .as_deref()
         .map(crate::mask::mask_text);
     // ① まず AXFrame（CGRect）を試す (Window に最適)
-    let rect = get_attr(node, "AXFrame").and_then(|cf| {
-        // AXValue → CGRect
-        let mut frame = mem::MaybeUninit::<CGRect>::uninit();
-        let ok = unsafe { AXValueGetValue(cf, kAXValueCGRectType, frame.as_mut_ptr() as *mut _) };
-        unsafe { CFRelease(cf) };
-        if ok {
-            let f = unsafe { frame.assume_init() };
-            Some(Rect { x: f.origin.x, y: f.origin.y, width: f.size.width, height: f.size.height })
-        } else { None }
-    })
-    // ② AXFrame 取れなければ Position + Size で補う
-    .or_else(|| {
-        let pos = get_attr(node, "AXPosition").and_then(|cf| {
-            let mut pt = mem::MaybeUninit::<core_graphics::geometry::CGPoint>::uninit();
-            let ok = unsafe { AXValueGetValue(cf, kAXValueCGPointType, pt.as_mut_ptr() as *mut _) };
+    let rect = get_attr(node, "AXFrame")
+        .and_then(|cf| {
+            // AXValue → CGRect
+            let mut frame = mem::MaybeUninit::<CGRect>::uninit();
+            let ok =
+                unsafe { AXValueGetValue(cf, kAXValueCGRectType, frame.as_mut_ptr() as *mut _) };
             unsafe { CFRelease(cf) };
-            if ok { Some(unsafe { pt.assume_init() }) } else { None }
+            if ok {
+                let f = unsafe { frame.assume_init() };
+                Some(Rect {
+                    x: f.origin.x,
+                    y: f.origin.y,
+                    width: f.size.width,
+                    height: f.size.height,
+                })
+            } else {
+                None
+            }
+        })
+        // ② AXFrame 取れなければ Position + Size で補う
+        .or_else(|| {
+            let pos = get_attr(node, "AXPosition").and_then(|cf| {
+                let mut pt = mem::MaybeUninit::<core_graphics::geometry::CGPoint>::uninit();
+                let ok =
+                    unsafe { AXValueGetValue(cf, kAXValueCGPointType, pt.as_mut_ptr() as *mut _) };
+                unsafe { CFRelease(cf) };
+                if ok {
+                    Some(unsafe { pt.assume_init() })
+                } else {
+                    None
+                }
+            });
+            let size = get_attr(node, "AXSize").and_then(|cf| {
+                let mut sz = mem::MaybeUninit::<core_graphics::geometry::CGSize>::uninit();
+                let ok =
+                    unsafe { AXValueGetValue(cf, kAXValueCGSizeType, sz.as_mut_ptr() as *mut _) };
+                unsafe { CFRelease(cf) };
+                if ok {
+                    Some(unsafe { sz.assume_init() })
+                } else {
+                    None
+                }
+            });
+            if let (Some(pt), Some(sz)) = (pos, size) {
+                Some(Rect {
+                    x: pt.x,
+                    y: pt.y,
+                    width: sz.width,
+                    height: sz.height,
+                })
+            } else {
+                None
+            }
         });
-        let size = get_attr(node, "AXSize").and_then(|cf| {
-            let mut sz = mem::MaybeUninit::<core_graphics::geometry::CGSize>::uninit();
-            let ok = unsafe { AXValueGetValue(cf, kAXValueCGSizeType, sz.as_mut_ptr() as *mut _) };
-            unsafe { CFRelease(cf) };
-            if ok { Some(unsafe { sz.assume_init() }) } else { None }
-        });
-        if let (Some(pt), Some(sz)) = (pos, size) {
-            Some(Rect { x: pt.x, y: pt.y, width: sz.width, height: sz.height })
-        } else {
-            None
-        }
-    });
 
     // children
     let mut children = Vec::new();
@@ -131,15 +156,20 @@ unsafe fn build(node: *mut Object, depth: usize) -> UiNode {
         }
     }
 
-    UiNode { role, label, value, rect, children }
+    UiNode {
+        role,
+        label,
+        value,
+        rect,
+        children,
+    }
 }
 
 /// アクティブアプリの AX ツリーを取得
 pub fn snapshot_tree() -> Result<UiNode> {
     unsafe {
-         // ① 最前面アプリの PID を取得
-        let ws_cls = Class::get("NSWorkspace")
-            .ok_or_else(|| anyhow!("NSWorkspace not found"))?;
+        // ① 最前面アプリの PID を取得
+        let ws_cls = Class::get("NSWorkspace").ok_or_else(|| anyhow!("NSWorkspace not found"))?;
         let ws: *mut Object = msg_send![ws_cls, sharedWorkspace];
         let app: *mut Object = msg_send![ws, frontmostApplication];
         let pid: i32 = msg_send![app, processIdentifier];
@@ -151,8 +181,7 @@ pub fn snapshot_tree() -> Result<UiNode> {
         }
 
         // ③ ウィンドウ配列を取得 (AXWindows)
-        let windows_cf = get_attr(ax_app, "AXWindows")
-            .ok_or_else(|| anyhow!("no AXWindows"))?;
+        let windows_cf = get_attr(ax_app, "AXWindows").ok_or_else(|| anyhow!("no AXWindows"))?;
         let arr: *mut Object = mem::transmute(windows_cf);
         let count: usize = msg_send![arr, count];
 

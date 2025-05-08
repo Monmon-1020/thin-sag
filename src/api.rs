@@ -1,12 +1,16 @@
-use axum::{routing::{post,get}, Json, Router, extract::{State, Path}};
-use crate::{action::ActionList, error::ApiError, job::JobManager, models::*, tree::UiNode};
-use std::sync::Arc;
-use axum::http::StatusCode; 
 use crate::policy::validate_actions;
-use crate::{tree::snapshot_tree, policy::load as load_policy};
+use crate::{action::ActionList, error::ApiError, job::JobManager, models::*, tree::UiNode};
+use crate::{policy::load as load_policy, tree::snapshot_tree};
+use axum::http::StatusCode;
+use axum::{
+    extract::{Path, State},
+    routing::{get, post},
+    Json, Router,
+};
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicU32, Ordering};
-use tokio::time::{Instant, Duration};
+use std::sync::Arc;
+use tokio::time::{Duration, Instant};
 
 static SNAP_COUNT: Lazy<AtomicU32> = Lazy::new(|| AtomicU32::new(0));
 static SNAP_RESET: Lazy<tokio::sync::Mutex<Instant>> =
@@ -45,7 +49,7 @@ pub async fn run_handler(
     let id = st.job_manager.enqueue(req).await;
     Ok((
         axum::http::StatusCode::ACCEPTED,
-        Json(serde_json::json!({"job_id": id}))
+        Json(serde_json::json!({"job_id": id})),
     ))
 }
 
@@ -59,7 +63,7 @@ pub async fn job_status(
             "status": format!("{:?}", r.status),
             "result": r.output
         }))),
-        None => Err(ApiError::NotFound(anyhow::anyhow!("Job ID 不明")))
+        None => Err(ApiError::NotFound(anyhow::anyhow!("Job ID 不明"))),
     }
 }
 
@@ -73,11 +77,16 @@ pub async fn run_json(
     }
     // 実行リクエストをキューへ
     let id = st.job_manager.enqueue_json(list).await;
-    Ok((StatusCode::ACCEPTED, Json(serde_json::json!({"job_id": id}))))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({"job_id": id})),
+    ))
 }
 
 pub fn build_router() -> Router {
-    let state = Arc::new(AppState{ job_manager: Arc::new(JobManager::new()) });
+    let state = Arc::new(AppState {
+        job_manager: Arc::new(JobManager::new()),
+    });
     Router::new()
         .route("/run", post(run_handler))
         .route("/job/:id", get(job_status))

@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug)]
 pub struct RunRequest {
-    pub bundle: String,   // 例: "com.apple.Notes"
-    pub secret: String,   // Keychain ラベル
-    pub text:   String,   // "Hello {secret}!"
+    pub bundle: String, // 例: "com.apple.Notes"
+    pub secret: String, // Keychain ラベル
+    pub text: String,   // "Hello {secret}!"
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -15,10 +15,16 @@ pub struct RunResponse {
 
 impl RunResponse {
     pub fn success() -> Self {
-        Self { success: true, message: None }
+        Self {
+            success: true,
+            message: None,
+        }
     }
 
     pub fn fail(message: String) -> Self {
-        Self { success: false, message: Some(message) }
+        Self {
+            success: false,
+            message: Some(message),
+        }
     }
 }

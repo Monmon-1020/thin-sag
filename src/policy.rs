@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use globset::{Glob, GlobSetBuilder};
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
@@ -7,7 +7,7 @@ use std::{fs, path::PathBuf, sync::RwLock};
 /// ~/.thin-sag/policy.yaml を読み込む
 const DEFAULT_PATH: &str = ".thin-sag/policy.yaml";
 
-#[derive(Debug, Deserialize,Clone)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(default)]
 pub struct Policy {
     pub allow_acts: Vec<String>,
@@ -19,13 +19,24 @@ pub struct Policy {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct Bounds { pub x_min:i32, pub x_max:i32, pub y_min:i32, pub y_max:i32 }
+pub struct Bounds {
+    pub x_min: i32,
+    pub x_max: i32,
+    pub y_min: i32,
+    pub y_max: i32,
+}
 
 impl Default for Policy {
     fn default() -> Self {
         Self {
-            allow_acts: vec!["launch".into(),"type".into(),"wait".into(),
-                             "click".into(),"scroll".into(),"keypress".into()],
+            allow_acts: vec![
+                "launch".into(),
+                "type".into(),
+                "wait".into(),
+                "click".into(),
+                "scroll".into(),
+                "keypress".into(),
+            ],
             denied_targets: vec![],
             max_wait_ms: Some(30_000),
             click_bounds: None,
@@ -39,19 +50,23 @@ impl Default for Policy {
 static POLICY: OnceCell<RwLock<Policy>> = OnceCell::new();
 
 pub(crate) fn load() -> Result<std::sync::Arc<Policy>> {
-    POLICY.get_or_try_init(|| {
-        let path = dirs::home_dir().unwrap_or(PathBuf::from("/"))
-                   .join(DEFAULT_PATH);
-        let pol: Policy = if path.exists() {
-            let txt = fs::read_to_string(&path)?;
-            serde_yaml::from_str(&txt)?
-        } else { Policy::default() };
-        Ok(RwLock::new(pol))
-    }).map(|lock| std::sync::Arc::new(lock.read().unwrap().clone()))
+    POLICY
+        .get_or_try_init(|| {
+            let path = dirs::home_dir()
+                .unwrap_or(PathBuf::from("/"))
+                .join(DEFAULT_PATH);
+            let pol: Policy = if path.exists() {
+                let txt = fs::read_to_string(&path)?;
+                serde_yaml::from_str(&txt)?
+            } else {
+                Policy::default()
+            };
+            Ok(RwLock::new(pol))
+        })
+        .map(|lock| std::sync::Arc::new(lock.read().unwrap().clone()))
 }
 
 /// ------------- 検証関数 (public) -----------------
-
 use crate::action::{Action, ActionList};
 
 /// Action 配列をポリシーで検証
@@ -59,7 +74,9 @@ pub fn validate_actions(actions: &ActionList) -> Result<()> {
     let pol = load()?;
     // denied_targets 用 Glob セットを作成
     let mut gb = GlobSetBuilder::new();
-    for pat in &pol.denied_targets { gb.add(Glob::new(pat)?); }
+    for pat in &pol.denied_targets {
+        gb.add(Glob::new(pat)?);
+    }
     let denied_set = gb.build()?;
 
     for act in &actions.0 {
@@ -83,9 +100,21 @@ pub fn validate_actions(actions: &ActionList) -> Result<()> {
             }
         }
         // 4) クリック座標
-        if let (Some(b), Action::Click { x:Some(px), y:Some(py), .. }) = (pol.click_bounds.as_ref(), act) {
+        if let (
+            Some(b),
+            Action::Click {
+                x: Some(px),
+                y: Some(py),
+                ..
+            },
+        ) = (pol.click_bounds.as_ref(), act)
+        {
             if *px < b.x_min || *px > b.x_max || *py < b.y_min || *py > b.y_max {
-                return Err(anyhow!("policy_violation: click ({},{}) out of bounds", px, py));
+                return Err(anyhow!(
+                    "policy_violation: click ({},{}) out of bounds",
+                    px,
+                    py
+                ));
             }
         }
     }
@@ -93,22 +122,25 @@ pub fn validate_actions(actions: &ActionList) -> Result<()> {
 }
 
 /// helper: act 名
-fn act_name(a:&Action)->&'static str{
+fn act_name(a: &Action) -> &'static str {
     match a {
-        Action::Launch{..}=>"launch",
-        Action::Type{..}=>"type",
-        Action::Wait{..}=>"wait",
-        Action::Click{..}=>"click",
-        Action::Scroll{..}=>"scroll",
-        Action::Keypress{..}=>"keypress",
-        Action::Unsupported=>"unsupported",
+        Action::Launch { .. } => "launch",
+        Action::Type { .. } => "type",
+        Action::Wait { .. } => "wait",
+        Action::Click { .. } => "click",
+        Action::Scroll { .. } => "scroll",
+        Action::Keypress { .. } => "keypress",
+        Action::Unsupported => "unsupported",
     }
 }
 /// helper: 対象文字列 (launch target / click selector 等)
-fn act_target(a:&Action)->Option<&str>{
+fn act_target(a: &Action) -> Option<&str> {
     match a {
-        Action::Launch{target} => Some(target),
-        Action::Click{selector:Some(sel),..} => Some(sel),
-        _=>None,
+        Action::Launch { target } => Some(target),
+        Action::Click {
+            selector: Some(sel),
+            ..
+        } => Some(sel),
+        _ => None,
     }
 }
