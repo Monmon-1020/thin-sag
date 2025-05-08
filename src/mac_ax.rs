@@ -1,14 +1,12 @@
 use crate::adapter::UiAdapter;
 use anyhow::{anyhow, Result};
-use core_foundation::string::CFString;
 use core_graphics::{
     event::{
-        CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton, CGScrollEventUnit,
+        CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton,
     },
     event_source::{CGEventSource, CGEventSourceStateID},
     geometry::CGPoint,
 };
-use objc::{class, msg_send, sel, sel_impl};
 
 pub struct MacAdapter;
 
@@ -99,7 +97,7 @@ impl UiAdapter for MacAdapter {
 
     fn type_text(&self, text: &str) -> Result<()> {
         for c in text.chars() {
-            let mut mods = CGEventFlags::empty();
+            let mods = CGEventFlags::empty();
             let code =
                 character_to_keycode(c).ok_or_else(|| anyhow!("unsupported char '{}'", c))?;
             CGEvent::new_keyboard_event(
