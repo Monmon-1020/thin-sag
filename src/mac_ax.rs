@@ -95,29 +95,52 @@ impl UiAdapter for MacAdapter {
 
     fn type_text(&self, text: &str) -> Result<()> {
         for c in text.chars() {
-            let mods = CGEventFlags::empty();
-            let code =
-                character_to_keycode(c).ok_or_else(|| anyhow!("unsupported char '{}'", c))?;
-            CGEvent::new_keyboard_event(
-                CGEventSource::new(CGEventSourceStateID::HIDSystemState)
-                    .map_err(|_| anyhow!("CGEventSource::new failed"))?,
-                code,
-                true,
-            )
-            .map_err(|_| anyhow!("key-down"))?
-            .post(CGEventTapLocation::HID);
-
-            CGEvent::new_keyboard_event(
-                CGEventSource::new(CGEventSourceStateID::HIDSystemState)
-                    .map_err(|_| anyhow!("CGEventSource::new failed"))?,
-                code,
-                false,
-            )
-            .map_err(|_| anyhow!("key-up"))?
-            .post(CGEventTapLocation::HID);
+            // ① 大文字判定＋基準文字
+            let is_upper = c.is_ascii_uppercase();
+            let base_c  = c.to_ascii_lowercase();
+    
+            // ② keycode 取得
+            let code = match character_to_keycode(base_c) {
+                Some(k) => k,
+                None => {
+                    return Err(anyhow!("unsupported char '{}'", c));
+                }
+            };
+    
+            // ③ フラグ設定
+            let mut flags = CGEventFlags::empty();
+            if is_upper {
+                flags |= CGEventFlags::CGEventFlagShift;
+            }
+    
+            // ④ イベントソース＆送出（key-down）
+            let src = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+                .map_err(|e| {
+                    anyhow!("CGEventSource::new failed")
+                })?;
+    
+            let down = CGEvent::new_keyboard_event(src.clone(), code, true)
+                .map_err(|e| {
+                    anyhow!("key-down failed")
+                })?;
+            down.set_flags(flags);
+            down.post(CGEventTapLocation::HID);
+    
+            // 少しだけ待ってみる（オプション）
+            std::thread::sleep(std::time::Duration::from_millis(10));
+    
+            // ⑤ key-up
+            let up = CGEvent::new_keyboard_event(src, code, false)
+                .map_err(|e| {
+                    anyhow!("key-up failed")
+                })?;
+            up.set_flags(flags);
+            up.post(CGEventTapLocation::HID);
         }
         Ok(())
     }
+    
+    
 
     fn wait_ms(&self, ms: u64) {
         std::thread::sleep(std::time::Duration::from_millis(ms));
