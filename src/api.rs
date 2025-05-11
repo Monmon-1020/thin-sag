@@ -1,5 +1,6 @@
 use crate::policy::validate_actions;
 use crate::tree::WindowSelector;
+use crate::tree::{list_windows_info, WindowInfo};
 use crate::{action::ActionList, error::ApiError, job::JobManager, models::*, tree::UiNode};
 use crate::{policy::load as load_policy, tree::snapshot_tree};
 use axum::http::StatusCode;
@@ -116,6 +117,13 @@ pub async fn run_json(
     ))
 }
 
+/// GET /windows
+pub async fn windows_handler() -> Json<Vec<WindowInfo>> {
+    eprintln!("[DEBUG] /windows called");
+    let list = list_windows_info();
+    Json(list)
+}
+
 pub fn build_router() -> Router {
     let state = Arc::new(AppState {
         job_manager: Arc::new(JobManager::new()),
@@ -125,5 +133,6 @@ pub fn build_router() -> Router {
         .route("/job/:id", get(job_status))
         .route("/run-json", post(run_json))
         .route("/snapshot", post(snapshot_handler))
+        .route("/windows", get(windows_handler))
         .with_state(state)
 }
