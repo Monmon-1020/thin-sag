@@ -21,7 +21,7 @@ pub enum ApiError {
 
 impl<E: Into<Error>> From<E> for ApiError {
     fn from(e: E) -> Self {
-        ApiError::Internal(e.into()) // デフォルトは 500
+        ApiError::Internal(e.into())
     }
 }
 

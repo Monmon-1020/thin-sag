@@ -4,7 +4,6 @@ use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use std::{fs, path::PathBuf, sync::RwLock};
 
-/// ~/.thin-sag/policy.yaml を読み込む
 const DEFAULT_PATH: &str = ".thin-sag/policy.yaml";
 
 #[derive(Debug, Deserialize, Clone)]
@@ -46,7 +45,6 @@ impl Default for Policy {
     }
 }
 
-/// シングルトンキャッシュ
 static POLICY: OnceCell<RwLock<Policy>> = OnceCell::new();
 
 pub(crate) fn load() -> Result<std::sync::Arc<Policy>> {
@@ -66,13 +64,10 @@ pub(crate) fn load() -> Result<std::sync::Arc<Policy>> {
         .map(|lock| std::sync::Arc::new(lock.read().unwrap().clone()))
 }
 
-/// ------------- 検証関数 (public) -----------------
 use crate::action::{Action, ActionList};
 
-/// Action 配列をポリシーで検証
 pub fn validate_actions(actions: &ActionList) -> Result<()> {
     let pol = load()?;
-    // denied_targets 用 Glob セットを作成
     let mut gb = GlobSetBuilder::new();
     for pat in &pol.denied_targets {
         gb.add(Glob::new(pat)?);
@@ -80,18 +75,15 @@ pub fn validate_actions(actions: &ActionList) -> Result<()> {
     let denied_set = gb.build()?;
 
     for act in &actions.0 {
-        // 1) allow_acts
         let name = act_name(act);
         if !pol.allow_acts.iter().any(|s| s == name) {
             return Err(anyhow!("policy_violation: act `{}` not allowed", name));
         }
-        // 2) denied_targets
         if let Some(t) = act_target(act) {
             if denied_set.is_match(t) {
                 return Err(anyhow!("policy_violation: target `{}` denied", t));
             }
         }
-        // 3) wait 超過
         if let Action::Wait { ms } = act {
             if let Some(max) = pol.max_wait_ms {
                 if *ms > max {
@@ -99,7 +91,6 @@ pub fn validate_actions(actions: &ActionList) -> Result<()> {
                 }
             }
         }
-        // 4) クリック座標
         if let (
             Some(b),
             Action::Click {
@@ -121,7 +112,6 @@ pub fn validate_actions(actions: &ActionList) -> Result<()> {
     Ok(())
 }
 
-/// helper: act 名
 fn act_name(a: &Action) -> &'static str {
     match a {
         Action::Launch { .. } => "launch",
@@ -133,7 +123,7 @@ fn act_name(a: &Action) -> &'static str {
         Action::Unsupported => "unsupported",
     }
 }
-/// helper: 対象文字列 (launch target / click selector 等)
+
 fn act_target(a: &Action) -> Option<&str> {
     match a {
         Action::Launch { target } => Some(target),

@@ -39,8 +39,6 @@ enum WindowArg {
 }
 
 pub async fn snapshot_handler(Json(body): Json<WindowParam>) -> Result<Json<UiNode>, ApiError> {
-    // ポリシー
-    println!("[DEBUG] /snapshot called");
     let pol = load_policy().map_err(ApiError::Internal)?;
     if !pol.allow_snapshot {
         return Err(ApiError::BadRequest(anyhow::anyhow!("snapshot disabled")));
@@ -106,11 +104,9 @@ pub async fn run_json(
     State(st): State<Arc<AppState>>,
     Json(list): Json<ActionList>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    // 🔒 ポリシー検証
     if let Err(e) = validate_actions(&list) {
         return Err(ApiError::BadRequest(e));
     }
-    // 実行リクエストをキューへ
     let id = st.job_manager.enqueue_json(list).await;
     Ok((
         StatusCode::ACCEPTED,

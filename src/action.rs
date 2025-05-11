@@ -1,10 +1,7 @@
 use serde::Deserialize;
-
-/// ❶ DSL のトップレベル
 #[derive(Deserialize, Debug)]
 pub struct ActionList(pub Vec<Action>);
 
-/// ❷ act 列挙
 #[derive(Deserialize, Debug)]
 #[serde(tag = "act")]
 pub enum Action {

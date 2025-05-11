@@ -2,9 +2,9 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 pub struct RunRequest {
-    pub bundle: String, // 例: "com.apple.Notes"
-    pub secret: String, // Keychain ラベル
-    pub text: String,   // "Hello {secret}!"
+    pub bundle: String, // ex: "com.apple.Notes"
+    pub secret: String,
+    pub text: String,
 }
 
 #[derive(Debug, serde::Serialize)]

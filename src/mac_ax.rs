@@ -28,11 +28,11 @@ impl UiAdapter for MacAdapter {
         let (x, y) = (x.unwrap_or(100), y.unwrap_or(100));
         let src = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
             .map_err(|_| anyhow!("CGEventSource::new failed"))?;
-        let mut modifiers = CGEventFlags::empty(); // 修正: modifiers を宣言
+        let mut modifiers = CGEventFlags::empty();
         let code = str_to_keycode("key_string", &mut modifiers)?;
         let up_event = CGEvent::new_keyboard_event(src.clone(), code, false)
             .map_err(|_| anyhow::anyhow!("Failed to create keyboard event"))?;
-        let pos = CGPoint::new(x as f64, y as f64); // CGPoint を使用
+        let pos = CGPoint::new(x as f64, y as f64);
         let down_event = CGEvent::new_mouse_event(
             src.clone(),
             CGEventType::LeftMouseDown,
@@ -40,13 +40,9 @@ impl UiAdapter for MacAdapter {
             CGMouseButton::Left,
         )
         .map_err(|_| anyhow!("CGEvent create error"))?;
-        let up_event = CGEvent::new_mouse_event(
-            src,
-            CGEventType::LeftMouseUp,
-            pos,
-            CGMouseButton::Left, // CGMouseButton::Left を使用
-        )
-        .map_err(|_| anyhow!("CGEvent create error"))?;
+        let up_event =
+            CGEvent::new_mouse_event(src, CGEventType::LeftMouseUp, pos, CGMouseButton::Left)
+                .map_err(|_| anyhow!("CGEvent create error"))?;
 
         down_event.post(CGEventTapLocation::HID);
         up_event.post(CGEventTapLocation::HID);
@@ -55,12 +51,7 @@ impl UiAdapter for MacAdapter {
     }
 
     fn scroll(&self, dy: i32) -> Result<()> {
-        // dy >0 → PageDown, dy<0 → PageUp とする
-        let key = if dy < 0 {
-            0x74 /* PageUp */
-        } else {
-            0x79 /* PageDown */
-        };
+        let key = if dy < 0 { 0x74 } else { 0x79 };
         let src = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
             .map_err(|_| anyhow!("CGEventSource error"))?;
         let down = CGEvent::new_keyboard_event(src.clone(), key, true)
@@ -95,59 +86,44 @@ impl UiAdapter for MacAdapter {
 
     fn type_text(&self, text: &str) -> Result<()> {
         for c in text.chars() {
-            // ① 大文字判定＋基準文字
             let is_upper = c.is_ascii_uppercase();
-            let base_c  = c.to_ascii_lowercase();
-    
-            // ② keycode 取得
+            let base_c = c.to_ascii_lowercase();
+
             let code = match character_to_keycode(base_c) {
                 Some(k) => k,
                 None => {
                     return Err(anyhow!("unsupported char '{}'", c));
                 }
             };
-    
-            // ③ フラグ設定
+
             let mut flags = CGEventFlags::empty();
             if is_upper {
                 flags |= CGEventFlags::CGEventFlagShift;
             }
-    
-            // ④ イベントソース＆送出（key-down）
+
             let src = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
-                .map_err(|e| {
-                    anyhow!("CGEventSource::new failed")
-                })?;
-    
+                .map_err(|e| anyhow!("CGEventSource::new failed"))?;
+
             let down = CGEvent::new_keyboard_event(src.clone(), code, true)
-                .map_err(|e| {
-                    anyhow!("key-down failed")
-                })?;
+                .map_err(|e| anyhow!("key-down failed"))?;
             down.set_flags(flags);
             down.post(CGEventTapLocation::HID);
-    
-            // 少しだけ待ってみる（オプション）
+
             std::thread::sleep(std::time::Duration::from_millis(10));
-    
-            // ⑤ key-up
+
             let up = CGEvent::new_keyboard_event(src, code, false)
-                .map_err(|e| {
-                    anyhow!("key-up failed")
-                })?;
+                .map_err(|e| anyhow!("key-up failed"))?;
             up.set_flags(flags);
             up.post(CGEventTapLocation::HID);
         }
         Ok(())
     }
-    
-    
 
     fn wait_ms(&self, ms: u64) {
         std::thread::sleep(std::time::Duration::from_millis(ms));
     }
 }
 
-// keycode ユーティリティ関数
 fn character_to_keycode(c: char) -> Option<u16> {
     match c {
         'a' => Some(0x00),

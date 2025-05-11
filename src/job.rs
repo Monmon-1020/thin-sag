@@ -15,7 +15,6 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 lazy_static! {
-    // {secret.<label>} の <label> 部分をキャプチャ
     static ref SECRET_REGEX: Regex = Regex::new(r"\{secret\.([a-zA-Z0-9_-]+)\}").unwrap();
 }
 
@@ -48,19 +47,17 @@ pub enum JobRequest {
 impl JobManager {
     pub fn new() -> Self {
         let (tx, mut rx) = mpsc::channel::<(String, JobRequest)>(100);
-        let (tx_json, mut rx_json) = mpsc::channel::<(String, ActionList)>(100); // 追加
+        let (tx_json, mut rx_json) = mpsc::channel::<(String, ActionList)>(100);
         let map: Arc<RwLock<HashMap<String, JobResult>>> = Arc::new(RwLock::new(HashMap::new()));
         let map_clone_1 = map.clone();
         let map_clone_2 = map.clone();
 
-        // ワーカータスク (2本に増やす)
         tokio::spawn(async move {
             while let Some((id, req)) = rx.recv().await {
                 {
                     let mut guard = map_clone_1.write().await;
                     guard.get_mut(&id).unwrap().status = JobStatus::Running;
                 }
-                // 実行 (古い処理)
                 let res = (|| -> Result<RunResponse, ApiError> {
                     if let JobRequest::Old(req) = req {
                         let secret = vault::get_secret(&req.secret).map_err(ApiError::Internal)?;
@@ -94,7 +91,6 @@ impl JobManager {
             }
         });
 
-        // 新しいワーカータスク
         tokio::spawn(async move {
             while let Some((id, actions)) = rx_json.recv().await {
                 {
@@ -102,7 +98,6 @@ impl JobManager {
                     guard.get_mut(&id).unwrap().status = JobStatus::Running;
                 }
 
-                // 1 全 Action を走査して secret プレースホルダを展開
                 let mut expanded_actions = Vec::with_capacity(actions.0.len());
                 for act in actions.0 {
                     let act = match act {
@@ -117,13 +112,11 @@ impl JobManager {
                                 text: processed_text,
                             }
                         }
-                        // 他の act にもターゲットやキーにプレースホルダがあるなら同様に
                         other => other,
                     };
                     expanded_actions.push(act);
                 }
 
-                // 2) プレースホルダ展開済みアクションを実行
                 let res = execute_actions(&expanded_actions);
 
                 let mut guard = map_clone_2.write().await;
@@ -145,7 +138,7 @@ impl JobManager {
             map,
             sender: tx,
             sender_json: tx_json,
-        } // sender_json 追加
+        }
     }
 
     pub async fn enqueue(&self, req: RunRequest) -> String {
@@ -189,9 +182,7 @@ fn execute_actions(actions: &[Action]) -> Result<(), ApiError> {
         match act {
             Action::Launch { target } => ui.launch(target)?,
             Action::Type { text } => {
-                // ① マスク用キャッシュに登録
                 cache_secret(text);
-                // ② 実際のキー入力
                 ui.type_text(text)?;
             }
             Action::Wait { ms } => ui.wait_ms(*ms),
