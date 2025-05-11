@@ -22,6 +22,8 @@ extern "C" {
     ) -> i32; // AXError
     fn CFRelease(cf: CFTypeRef);
     fn AXValueGetValue(value: CFTypeRef, valueType: u32, ptr: *mut std::ffi::c_void) -> bool;
+    fn CFGetTypeID(cf: CFTypeRef) -> usize;
+    fn CFStringGetTypeID() -> usize;
 }
 
 const kAXValueCGPointType: u32 = 2;
@@ -46,6 +48,12 @@ pub struct UiNode {
 
 unsafe fn cf_to_string(cf: CFTypeRef) -> Option<String> {
     if cf.is_null() {
+        return None;
+    }
+    let actual = CFGetTypeID(cf);
+    let string_id = CFStringGetTypeID();
+    if actual != string_id {
+        CFRelease(cf);
         return None;
     }
     let s = CFString::wrap_under_get_rule(cf as _);
