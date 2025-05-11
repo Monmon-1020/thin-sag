@@ -28,6 +28,7 @@ _A minimal trust layer for safely running any AI agent’s GUI actions on macOS 
    ```bash
    curl -Lo thin-sag.zip \
      https://github.com/your-org/thin-sag/releases/download/v0.3.0-beta1/thin-sag-macos-v0.3.0-beta1.zip
+    ```
 Unzip & Install
 
 ```bash

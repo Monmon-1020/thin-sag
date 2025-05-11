@@ -39,7 +39,7 @@ functions = [
 ]
 
 
-# ① LLM に Action 列を生成させる
+
 resp = openai.ChatCompletion.create(
     model="gpt-4o-mini",
     messages=[{"role":"user","content":prompt}],
@@ -50,7 +50,7 @@ actions = json.loads(resp.choices[0].message.function_call.arguments)
 
 print("LLM output actions ➜", json.dumps(actions, indent=2))
 
-# ② Thin‑SAG へ送信
+
 r = requests.post(f"{SAG_HOST}/run-json",
                   headers={"Content-Type": "application/json"},
                   data=json.dumps(actions["actions"]))  # 修正: actions["actions"] を送信
