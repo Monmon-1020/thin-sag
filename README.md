@@ -28,56 +28,135 @@ Masking Snapshot
 
 GET /snapshot returns an AX tree with sensitive text masked
 
-📡 API Endpoints
+## 📡 API Endpoints
 
-Below are the core HTTP routes. All requests require the X-SAG-TOKEN header (except /windows).
+Below are the core HTTP routes. All requests require the `X-SAG-TOKEN` header (except `/windows`).
 
-Endpoint
+---
 
-Method
+### **`/run`**
+- **Method**: `POST`
+- **Description**: Legacy one-shot login helper
+- **Request Body**:
+  ```json
+  {
+    "bundle": "<BundleID>",
+    "secret": "<label>",
+    "text": "Hello {secret.label}"
+  }
+  ```
+- **Example**:
+  ```bash
+  curl -X POST http://127.0.0.1:8900/run \
+       -H "Content-Type: application/json" \
+       -H "X-SAG-TOKEN: $(cat ~/.thin-sag/.sagtoken)" \
+       -d '{"bundle":"com.apple.Notes","secret":"profile_name","text":"Hello {secret}!"}'
+  ```
 
-Description
+---
 
-Required for Beta?
+### **`/run-json`**
+- **Method**: `POST`
+- **Description**: Queue a multi-step job using JSON Action DSL
+- **Request Body**:
+  ```json
+  [
+    { "act": "launch", "target": "com.apple.Notes" },
+    { "act": "wait", "ms": 800 },
+    { "act": "type", "text": "Hello {secret.profile_name}!" }
+  ]
+  ```
+- **Example**:
+  ```bash
+  curl -X POST http://127.0.0.1:8900/run-json \
+       -H "Content-Type: application/json" \
+       -H "X-SAG-TOKEN: $(cat ~/.thin-sag/.sagtoken)" \
+       -d '[{"act":"launch","target":"com.apple.Notes"},{"act":"wait","ms":800},{"act":"type","text":"Hello {secret.profile_name}!"}]'
+  ```
 
-Example Request
+---
 
-/run
+### **`/job/{id}`**
+- **Method**: `GET`
+- **Description**: Check job status and result
+- **Response**:
+  ```json
+  {
+    "status": "completed",
+    "result": "Job output here"
+  }
+  ```
+- **Example**:
+  ```bash
+  curl -X GET http://127.0.0.1:8900/job/123e4567-e89b-12d3-a456-426614174000 \
+       -H "X-SAG-TOKEN: $(cat ~/.thin-sag/.sagtoken)" | jq .
+  ```
 
-POST
+---
 
-Legacy CLI mode via JSON body { "app":bundle, "secret":label, "text":template }
+### **`/snapshot`**
+- **Method**: `POST`
+- **Description**: Return Accessibility tree of the selected window with sensitive text masked
+- **Request Body**:
+  ```json
+  {
+    "window": { "index": 1 }
+  }
+  ```
+- **Example**:
+  ```bash
+  curl -X POST http://127.0.0.1:8900/snapshot \
+       -H "Content-Type: application/json" \
+       -H "X-SAG-TOKEN: $(cat ~/.thin-sag/.sagtoken)" \
+       -d '{"window":{"index":1}}' | jq .
+  ```
 
-Optional
+---
 
-```bash
+### **`/screenshot`**
+- **Method**: `GET`
+- **Description**: Return a screenshot of the desktop
+- **Example**:
+  ```bash
+  curl -v http://127.0.0.1:8900/screenshot --output screen.png
+  ```
 
-curl -X POST http://127.0.0.1:8900/run 
+---
 
- -H "Content-Type: application/json" \
- -H "X-SAG-TOKEN: $(cat ~/.thin-sag/.sagtoken)" \
- -d '{"app":"com.apple.Notes","secret":"profile_name","text":"Hello {secret}!"}'
+### **`/windows`**
+- **Method**: `GET`
+- **Description**: List all available windows
+- **Example**:
+  ```bash
+  curl -X GET http://127.0.0.1:8900/windows
+  ```
 
-| **`/run-json`**     | POST   | JSON‑Action DSL array of `{act,target,text,ms,key,...}`  | ✅                 | ```bash
-curl -X POST http://127.0.0.1:8900/run-json \
-     -H "Content-Type: application/json" \
-     -H "X-SAG-TOKEN: $(cat ~/.thin-sag/.sagtoken)" \
-     -d '[{"act":"launch","target":"com.apple.Notes"}, {"act":"wait","ms":800}, {"act":"type","text":"Hello {secret.profile_name}!"}]'
+---
 
-| /job/{id}     | GET    | Check job status & result – returns {status, result}    | ✅                 | ```bash
-curl -X GET http://127.0.0.1:8900/job/123e4567-e89b-12d3-a456-426614174000 -H "X-SAG-TOKEN: $(cat ~/.thin-sag/.sagtoken)" | jq .
+### **`/ui/log`** *(beta)*
+- **Method**: `GET`
+- **Description**: Return an HTML list of audit logs
+- **Example**:
+  ```bash
+  curl -X GET http://127.0.0.1:8900/ui/log
+  ```
 
-| **`/snapshot`**     | POST   | Return Accessibility tree of selected window              | ✅                 | ```bash
-curl -X POST http://127.0.0.1:8900/snapshot \
-     -H "Content-Type: application/json" \
-     -H "X-SAG-TOKEN: $(cat ~/.thin-sag/.sagtoken)" \
-     -d '{"window":{"index":1}}' | jq .
+---
 
-| **`/screenshot`**     | POST   | Return Screenshot of desktop             | ✅                 | ```bash
-curl -v http://127.0.0.1:8900/screenshot --output screen.png
+## JSON Action DSL v0.1
 
+Below is an example of the JSON Action DSL used with the `/run-json` endpoint.
 
-Note: You must specify at least one of these for Beta release: /run-json, /job/{id}, /snapshot. The /run CLI route remains for backward compatibility.
+```json
+[
+  { "act": "launch",   "target": "com.apple.Notes" },
+  { "act": "click",    "x": 200, "y": 300 },
+  { "act": "scroll",   "dy": -500 },
+  { "act": "type",     "text": "{secret.email}" },
+  { "act": "keypress", "key": "CMD+S" },
+  { "act": "wait",     "ms": 1000 }
+]
+```
 
 ⏬ Installation
 
