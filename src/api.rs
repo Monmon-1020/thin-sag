@@ -1,4 +1,5 @@
 use crate::policy::validate_actions;
+use crate::screenshot::screenshot_handler;
 use crate::tree::WindowSelector;
 use crate::tree::{list_windows_info, WindowInfo};
 use crate::{action::ActionList, error::ApiError, job::JobManager, models::*, tree::UiNode};
@@ -134,5 +135,6 @@ pub fn build_router() -> Router {
         .route("/run-json", post(run_json))
         .route("/snapshot", post(snapshot_handler))
         .route("/windows", get(windows_handler))
+        .route("/screenshot", get(screenshot_handler))
         .with_state(state)
 }

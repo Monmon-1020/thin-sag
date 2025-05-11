@@ -11,6 +11,7 @@ mod mac_ax;
 mod mask;
 mod models;
 mod policy;
+mod screenshot;
 mod tree;
 mod vault;
 #[derive(Parser)]
