@@ -74,8 +74,7 @@ curl -X POST http://127.0.0.1:8900/snapshot \
      -d '{"window":{"index":1}}' | jq .
 
 | **`/screenshot`**     | POST   | Return Screenshot of desktop             | ✅                 | ```bash
-curl -X POST http://127.0.0.1:8900/screenshot \
-     -H "X-SAG-TOKEN: $(cat ~/.thin-sag/.sagtoken)" \
+curl -v http://127.0.0.1:8900/screenshot --output screen.png
 
 
 Note: You must specify at least one of these for Beta release: /run-json, /job/{id}, /snapshot. The /run CLI route remains for backward compatibility.
