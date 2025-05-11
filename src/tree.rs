@@ -14,6 +14,7 @@ use std::ptr;
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
     fn AXUIElementCreateApplication(pid: i32) -> *mut Object;
+    fn AXUIElementCreateSystemWide() -> *mut Object;
     fn AXUIElementCopyAttributeValue(
         element: *mut Object,
         attribute: CFTypeRef,
@@ -113,6 +114,7 @@ unsafe fn select_window(wins: &[*mut Object], sel: &WindowSelector) -> Option<*m
     }
 }
 
+#[derive(Debug)]
 pub enum WindowSelector {
     Front,
     Index(usize),
@@ -216,23 +218,83 @@ unsafe fn build(node: *mut Object, depth: usize) -> UiNode {
     }
 }
 
+#[derive(Serialize)]
+pub struct WindowInfo {
+    pub index: usize,
+    pub title: String,
+}
+
+/// システム内の全アプリケーションウィンドウとそのタイトルを返す
+pub fn list_windows_info() -> Vec<WindowInfo> {
+    unsafe {
+        // NSWorkspace から起動中アプリを列挙
+        let ws_cls = Class::get("NSWorkspace").expect("NSWorkspace class not found");
+        let ws: *mut Object = msg_send![ws_cls, sharedWorkspace];
+        let running_apps: *mut Object = msg_send![ws, runningApplications];
+        let app_count: usize = msg_send![running_apps, count];
+
+        let mut infos = Vec::new();
+        for app_i in 0..app_count {
+            let app: *mut Object = msg_send![running_apps, objectAtIndex: app_i];
+            let pid: i32 = msg_send![app, processIdentifier];
+            let ax_app = AXUIElementCreateApplication(pid);
+            if ax_app.is_null() {
+                continue;
+            }
+            let wins = list_windows(ax_app);
+            for (i, &win) in wins.iter().enumerate() {
+                // タイトルを取れるなら取る
+                let title = get_attr(win, "AXTitle")
+                    .and_then(|cf| unsafe { cf_to_string(cf) })
+                    .unwrap_or_else(|| "<no title>".into());
+                infos.push(WindowInfo {
+                    index: infos.len(),
+                    title,
+                });
+            }
+        }
+        infos
+    }
+}
+
 /// アクティブアプリの AX ツリーを取得
 pub fn snapshot_tree(sel: WindowSelector) -> Result<UiNode> {
     unsafe {
-        // ① 最前面アプリの PID を取得
+        // ① まず NSWorkspace から起動中の全アプリを列挙し、
+        //    各アプリの AXUIElement からウィンドウ一覧を集める
         let ws_cls = Class::get("NSWorkspace").ok_or_else(|| anyhow!("NSWorkspace not found"))?;
         let ws: *mut Object = msg_send![ws_cls, sharedWorkspace];
-        let app: *mut Object = msg_send![ws, frontmostApplication];
-        let pid: i32 = msg_send![app, processIdentifier];
-
-        // ② AXUIElementCreateApplication でアプリ要素を作成
-        let ax_app = AXUIElementCreateApplication(pid);
-        if ax_app.is_null() {
-            return Err(anyhow!("AXUIElementCreateApplication failed"));
+        let running_apps: *mut Object = msg_send![ws, runningApplications];
+        let app_count: usize = msg_send![running_apps, count];
+        let mut wins = Vec::new();
+        for i in 0..app_count {
+            let app: *mut Object = msg_send![running_apps, objectAtIndex: i];
+            let pid: i32 = msg_send![app, processIdentifier];
+            let ax_app = AXUIElementCreateApplication(pid);
+            if !ax_app.is_null() {
+                // アプリ要素からウィンドウを取得
+                let mut app_wins = list_windows(ax_app);
+                wins.append(&mut app_wins);
+            }
         }
 
-        let wins = list_windows(ax_app);
-        let target = select_window(&wins, &sel).ok_or_else(|| anyhow!("window not found"))?;
+        // —— デバッグ：取得したウィンドウ一覧を出力 ——
+        eprintln!("DEBUG: system-wide windows count: {}", wins.len());
+        for (i, w) in wins.iter().enumerate() {
+            let title = get_attr(*w, "AXTitle")
+                .and_then(|cf| cf_to_string(cf))
+                .unwrap_or_else(|| "<no title>".into());
+            eprintln!("  [{}] {}", i, title);
+        }
+        eprintln!("DEBUG: selector = {:?}", sel);
+        // ————————————————————————————————
+
+        // ② セレクタで対象ウィンドウを選択
+        let target = select_window(&wins, &sel).ok_or_else(|| {
+            eprintln!("DEBUG: no window matched selector {:?}", sel);
+            anyhow!("window not found")
+        })?;
+        // ③ ツリー構築
         Ok(build(target, 0))
     }
 }
