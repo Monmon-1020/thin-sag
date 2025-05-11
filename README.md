@@ -1,38 +1,96 @@
-# 🚪 thin‑sag (Secure Agent Gateway) — **v0.3.0‑beta**
+🚪 thin‑sag (Secure Agent Gateway) — v0.3.0‑beta
 
-> **TL;DR**
-> • macOS 14 only (Apple Silicon & Intel)
-> • A drop‑in **Trust Layer** that lets any AI agent control your GUI safely
-> • All‑in‑one binary: Vault isolation ▸ Policy engine ▸ Job queue ▸ Audit logs
+TL;DR• macOS 14 only (Apple Silicon & Intel)• A drop‑in Trust Layer that lets any AI agent control your GUI safely• All‑in‑one binary: Vault isolation ▸ Policy engine ▸ Job queue ▸ Audit logs
 
----
+✨ Key Features
 
-## ✨ Key Features
+Module
 
-| Module                   | What it does                                                                           |
-| ------------------------ | -------------------------------------------------------------------------------------- |
-| **JSON Action DSL**      | Declarative `launch / type / click / scroll / wait / keypress` – easy for LLMs         |
-| **Vault Isolation**      | Secrets are pulled from macOS Keychain & never shown to the LLM                        |
-| **Policy v0**            | YAML allow/deny for acts & targets ＋ click bounds ＋ wait‑limit                         |
-| **Job Queue & REST API** | `POST /run‑json`  →  `GET /job/{id}`                                                   |
-| **Masked UI Snapshot**   | `POST /snapshot` returns an Accessibility Tree with secrets auto‑masked (`***MASK***`) |
-| **Audit Logs**           | Every action (pass / blocked) streamed to `~/.thin-sag/logs/*.jsonl`                   |
+What it does
 
----
+JSON Action DSL
 
-## ⏬ Installation
+Declarative launch / type / click / scroll / wait / keypress ...
 
-1. **Download** the notarized DMG → [thin-sag‑v0.3.0‑beta.dmg](https://github.com/your-org/thin-sag/releases/latest)
-2. **Drag & Drop** `thin-sag.app` into **/Applications**
-3. At first launch macOS asks for **Accessibility** permissions – click **Allow**
-4. *(optional)* Symlink the binary into your `$PATH`:
+Vault isolation
+
+Keychain values injected on demand, never exposed to agents
+
+Policy v0
+
+YAML rules: allow/deny acts & targets, click bounds, wait limits
+
+Job queue & API
+
+/run (CLI), /run-json, /job/{id}, /snapshot
+
+Masking Snapshot
+
+GET /snapshot returns an AX tree with sensitive text masked
+
+📡 API Endpoints
+
+Below are the core HTTP routes. All requests require the X-SAG-TOKEN header (except /windows).
+
+Endpoint
+
+Method
+
+Description
+
+Required for Beta?
+
+Example Request
+
+/run
+
+POST
+
+Legacy CLI mode via JSON body { "app":bundle, "secret":label, "text":template }
+
+Optional
 
 ```bash
-ln -s /Applications/thin-sag.app/Contents/MacOS/thin-sag \
-      /usr/local/bin/thin-sag
-```
 
----
+curl -X POST http://127.0.0.1:8900/run 
+
+ -H "Content-Type: application/json" \
+ -H "X-SAG-TOKEN: $(cat ~/.thin-sag/.sagtoken)" \
+ -d '{"app":"com.apple.Notes","secret":"profile_name","text":"Hello {secret}!"}'
+
+| **`/run-json`**     | POST   | JSON‑Action DSL array of `{act,target,text,ms,key,...}`  | ✅                 | ```bash
+curl -X POST http://127.0.0.1:8900/run-json \
+     -H "Content-Type: application/json" \
+     -H "X-SAG-TOKEN: $(cat ~/.thin-sag/.sagtoken)" \
+     -d '[{"act":"launch","target":"com.apple.Notes"}, {"act":"wait","ms":800}, {"act":"type","text":"Hello {secret.profile_name}!"}]'
+
+| /job/{id}     | GET    | Check job status & result – returns {status, result}    | ✅                 | ```bash
+curl -X GET http://127.0.0.1:8900/job/123e4567-e89b-12d3-a456-426614174000 -H "X-SAG-TOKEN: $(cat ~/.thin-sag/.sagtoken)" | jq .
+
+| **`/snapshot`**     | POST   | Return Accessibility tree of selected window              | ✅                 | ```bash
+curl -X POST http://127.0.0.1:8900/snapshot \
+     -H "Content-Type: application/json" \
+     -H "X-SAG-TOKEN: $(cat ~/.thin-sag/.sagtoken)" \
+     -d '{"window":{"index":1}}' | jq .
+
+| **`/screenshot`**     | POST   | Return Screenshot of desktop             | ✅                 | ```bash
+curl -X POST http://127.0.0.1:8900/screenshot \
+     -H "X-SAG-TOKEN: $(cat ~/.thin-sag/.sagtoken)" \
+
+
+Note: You must specify at least one of these for Beta release: /run-json, /job/{id}, /snapshot. The /run CLI route remains for backward compatibility.
+
+⏬ Installation
+
+Download ZIP from GitHub Releases: thin-sag-macos.zip
+
+Unzip & Install:
+
+unzip thin-sag-macos.zip
+chmod +x thin-sag
+mv thin-sag /usr/local/bin/
+
+Grant Accessibility when prompted.
 
 ## 🚀 Quick Start
 
