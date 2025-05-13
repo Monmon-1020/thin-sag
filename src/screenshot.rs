@@ -26,10 +26,7 @@ struct Base64Response {
 pub async fn screenshot_handler(
     Query(params): Query<ScreenshotParams>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let tmp_path = std::env::temp_dir().join(format!(
-        "thin_sag_screenshot_{}.png",
-        Uuid::new_v4()
-    ));
+    let tmp_path = std::env::temp_dir().join(format!("thin_sag_screenshot_{}.png", Uuid::new_v4()));
     eprintln!("DEBUG: tmp_path = {:?}", tmp_path);
 
     let output = Command::new("screencapture")

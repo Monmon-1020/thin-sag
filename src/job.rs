@@ -1,4 +1,4 @@
-use crate::mask::cache_secret;
+use crate::mask::register_secret;
 use crate::{
     action::{Action, ActionList},
     adapter::UiAdapter,
@@ -182,7 +182,7 @@ fn execute_actions(actions: &[Action]) -> Result<(), ApiError> {
         match act {
             Action::Launch { target } => ui.launch(target)?,
             Action::Type { text } => {
-                cache_secret(text);
+                register_secret(text);
                 ui.type_text(text)?;
             }
             Action::Wait { ms } => ui.wait_ms(*ms),

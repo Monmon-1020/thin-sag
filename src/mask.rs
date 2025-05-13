@@ -1,30 +1,40 @@
-use dashmap::DashSet;
+// mask.rs
 use once_cell::sync::Lazy;
 use regex::Regex;
-use sha2::{Digest, Sha256};
+use std::collections::HashSet;
+use std::sync::RwLock;
 
-static MASK_CACHE: Lazy<DashSet<[u8; 32]>> = Lazy::new(DashSet::new);
+static SECRET_LITERALS: Lazy<RwLock<HashSet<String>>> = Lazy::new(|| RwLock::new(HashSet::new()));
 
-static MAIL_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}").unwrap());
-static PHONE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\b\d{2,4}[- ]?\d{2,4}[- ]?\d{3,4}\b").unwrap());
-static CC_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b").unwrap());
+static PII_REGEX: Lazy<Vec<Regex>> = Lazy::new(|| {
+    vec![
+        // e‑mail
+        Regex::new(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}").unwrap(),
+        // tel (simple JP / intl)
+        Regex::new(r"\\+?\\d[\\d\\-]{8,}\\d").unwrap(),
+    ]
+});
 
-pub fn cache_secret(s: &str) {
-    let hash = Sha256::digest(s.as_bytes());
-    MASK_CACHE.insert(hash.into());
+pub fn register_secret(raw: &str) {
+    let mut guard = SECRET_LITERALS.write().unwrap();
+    guard.insert(raw.to_string());
 }
 
-pub fn mask_text(input: &str) -> String {
-    let hash = Sha256::digest(input.as_bytes());
-    if MASK_CACHE.contains(&(Into::<[u8; 32]>::into(hash))) {
-        return "***MASK***".into();
+pub fn mask_text<S: AsRef<str>>(input: S) -> String {
+    let s = input.as_ref();
+
+    {
+        let guard = SECRET_LITERALS.read().unwrap();
+        if guard.contains(s) {
+            return "***MASK***".into();
+        }
     }
-    let mut out = input.to_owned();
-    for re in [&*MAIL_RE, &*PHONE_RE, &*CC_RE] {
-        out = re.replace_all(&out, "***MASK***").into_owned();
+
+    for re in PII_REGEX.iter() {
+        if re.is_match(s) {
+            return re.replace_all(s, "***MASK***").into_owned();
+        }
     }
-    out
+
+    s.to_string()
 }

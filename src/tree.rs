@@ -11,6 +11,7 @@ use serde::Serialize;
 use std::mem;
 use std::ptr;
 
+const MAX_DEPTH: usize = 8;
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
     fn AXUIElementCreateApplication(pid: i32) -> *mut Object;
@@ -19,7 +20,14 @@ extern "C" {
         element: *mut Object,
         attribute: CFTypeRef,
         value: *mut CFTypeRef,
-    ) -> i32; // AXError
+    ) -> i32;
+    static kAXAttributedStringForRangeParameterizedAttribute: CFTypeRef;
+    fn AXUIElementCopyParameterizedAttributeValue(
+        element: *mut Object,
+        parameterizedAttribute: CFTypeRef,
+        parameter: CFTypeRef,
+        result: *mut CFTypeRef,
+    ) -> i32;
     fn CFRelease(cf: CFTypeRef);
     fn AXValueGetValue(value: CFTypeRef, valueType: u32, ptr: *mut std::ffi::c_void) -> bool;
     fn CFGetTypeID(cf: CFTypeRef) -> usize;
@@ -126,26 +134,51 @@ pub enum WindowSelector {
 }
 
 unsafe fn build(node: *mut Object, depth: usize) -> UiNode {
-    // role
+    // AXRole
     let role = get_attr(node, "AXRole")
         .and_then(|cf| unsafe { cf_to_string(cf) })
         .unwrap_or_default();
-    // label
-    let label = if let Some(cf) = get_attr(node, "AXTitle") {
-        if let Some(string) = unsafe { cf_to_string(cf) } {
-            string
-        } else {
-            String::default()
-        }
-    } else {
-        String::default()
-    };
 
-    let value = get_attr(node, "AXValue")
+    // AXTitle (ラベル)
+    let label = get_attr(node, "AXTitle")
         .and_then(|cf| unsafe { cf_to_string(cf) })
-        .as_deref()
-        .map(crate::mask::mask_text);
+        .unwrap_or_default();
 
+    // AXValue またはパラメータ付き属性によるテキスト取得
+    let mut value: Option<String> =
+        get_attr(node, "AXValue").and_then(|cf| unsafe { cf_to_string(cf) });
+
+    // テキスト系要素の場合、パラメータ付き属性で全文取得
+    if value.is_none() {
+        match role.as_str() {
+            "AXTextArea" | "AXTextField" | "AXStaticText" => {
+                // CFRange 全体 (location=0, length=INT_MAX)
+                let full_range = {
+                    use core_foundation::base::CFRange;
+                    let r = CFRange::init(0, isize::MAX);
+                    &r as *const _ as CFTypeRef
+                };
+                // 属性キー
+                let key = CFString::new("AXAttributedStringForRangeParameterizedAttribute")
+                    .as_CFTypeRef();
+                let mut out: CFTypeRef = ptr::null_mut();
+                let err =
+                    AXUIElementCopyParameterizedAttributeValue(node, key, full_range, &mut out);
+                if err == 0 && !out.is_null() {
+                    // CFAttributedStringRef → CFString → Rust String
+                    if let Some(text) = unsafe { cfattr_to_string(out) } {
+                        value = Some(text);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // マスク処理
+    let masked_value = value.as_deref().map(crate::mask::mask_text);
+
+    // AXFrame or AXPosition+AXSize から Rect を取得
     let rect = get_attr(node, "AXFrame")
         .and_then(|cf| {
             let mut frame = mem::MaybeUninit::<CGRect>::uninit();
@@ -199,9 +232,9 @@ unsafe fn build(node: *mut Object, depth: usize) -> UiNode {
             }
         });
 
-    // children
+    // 子要素を再帰処理
     let mut children = Vec::new();
-    if depth < 3 {
+    if depth < MAX_DEPTH {
         if let Some(cf_children) = get_attr(node, "AXChildren") {
             let arr: *mut Object = mem::transmute(cf_children);
             let count: usize = msg_send![arr, count];
@@ -209,17 +242,29 @@ unsafe fn build(node: *mut Object, depth: usize) -> UiNode {
                 let child: *mut Object = msg_send![arr, objectAtIndex: i];
                 children.push(build(child, depth + 1));
             }
-            CFRelease(cf_children);
+            unsafe { CFRelease(cf_children) };
         }
     }
 
     UiNode {
         role,
-        label: label.to_string(),
-        value,
+        label,
+        value: masked_value,
         rect,
         children,
     }
+}
+
+unsafe fn cfattr_to_string(cf: CFTypeRef) -> Option<String> {
+    if cf.is_null() {
+        return None;
+    }
+    let raw: *mut Object = mem::transmute(cf);
+    // AttributedString の文字要素を取得
+    let cf_str: CFTypeRef = msg_send![raw, string];
+    let s = cf_to_string(cf_str)?;
+    CFRelease(cf);
+    Some(s)
 }
 
 #[derive(Serialize)]
