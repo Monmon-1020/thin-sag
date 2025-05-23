@@ -1,5 +1,4 @@
 // src/guard/audit.rs
-
 use crate::error::ApiError;
 use crate::guard::ipc::UserDecision;
 use crate::guard::GuardEvent;
@@ -35,4 +34,42 @@ pub async fn write(
     });
     writeln!(f, "{}", entry.to_string()).unwrap();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::guard::ipc::UserDecision;
+    use crate::guard::GuardEvent;
+    use chrono::Utc;
+    use std::{env, fs};
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_write_creates_log_and_contents() {
+        // Prepare a temporary HOME directory for testing
+        let tmp = TempDir::new().expect("failed to create tempdir");
+        env::set_var("HOME", tmp.path());
+
+        // Write a dummy event and decision
+        let event = GuardEvent {
+            pid: 1234,
+            path: "/tmp/testfile".into(),
+        };
+        write(&event, "ruleX", &UserDecision::Deny)
+            .await
+            .expect("write failed");
+
+        // Read the output log file and verify its contents
+        let today = Utc::now().format("%Y%m%d").to_string();
+        let log_path = tmp
+            .path()
+            .join(".thin-sag/logs")
+            .join(format!("audit-{}.log", today));
+
+        let contents = fs::read_to_string(&log_path).expect("failed to read audit log");
+
+        // Check that each field is present
+        assert!(contents.contains(r#""pid":1234"#), "pid not found in log");
+    }
 }
