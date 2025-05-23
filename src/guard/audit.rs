@@ -1,0 +1,38 @@
+// src/guard/audit.rs
+
+use crate::error::ApiError;
+use crate::guard::ipc::UserDecision;
+use crate::guard::GuardEvent;
+use chrono::Utc;
+use serde_json::json;
+use std::fs::{create_dir_all, OpenOptions};
+use std::io::Write;
+
+/// Write audit logs in JSONL format
+pub async fn write(
+    event: &GuardEvent,
+    rule_id: &str,
+    decision: &UserDecision,
+) -> Result<(), ApiError> {
+    let dir = dirs::home_dir().unwrap().join(".thin-sag/logs");
+    create_dir_all(&dir).unwrap();
+    let file = dir.join(format!("audit-{}.log", Utc::now().format("%Y%m%d")));
+    let mut f = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(file)
+        .map_err(|e| ApiError::Internal(e.into()))?;
+
+    let entry = json!({
+        "ts": Utc::now().timestamp(),
+        "pid": event.pid,
+        "path": event.path,
+        "rule_id": rule_id,
+        "user_decision": match decision {
+            UserDecision::Allow => "allow",
+            UserDecision::Deny => "deny",
+        }
+    });
+    writeln!(f, "{}", entry.to_string()).unwrap();
+    Ok(())
+}
