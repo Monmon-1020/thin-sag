@@ -1,10 +1,7 @@
 // src/guard/ipc.rs
 use crate::guard::GuardEvent;
 use serde::{Deserialize, Serialize};
-use std::{
-    path::PathBuf,
-    time::Duration,
-};
+use std::{path::PathBuf, time::Duration};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::UnixStream,
@@ -46,15 +43,23 @@ fn socket_path() -> PathBuf {
 pub async fn ask_user(event: &GuardEvent, rule_id: &str) -> UserDecision {
     let result = timeout(Duration::from_secs(30), async move {
         let path = socket_path();
-        let mut stream = UnixStream::connect(&path).await.map_err(|e| Box::new(e) as Box<_>)?;
+        let mut stream = UnixStream::connect(&path)
+            .await
+            .map_err(|e| Box::new(e) as Box<_>)?;
         let req = IpcRequest {
             rule_id: rule_id.to_string(),
             path: event.path.clone(),
             pid: event.pid,
         };
         let req_json = serde_json::to_string(&req)?;
-        stream.write_all(req_json.as_bytes()).await.map_err(|e| Box::new(e) as Box<_>)?;
-        stream.write_all(b"\n").await.map_err(|e| Box::new(e) as Box<_>)?;
+        stream
+            .write_all(req_json.as_bytes())
+            .await
+            .map_err(|e| Box::new(e) as Box<_>)?;
+        stream
+            .write_all(b"\n")
+            .await
+            .map_err(|e| Box::new(e) as Box<_>)?;
 
         let reader = BufReader::new(stream);
         let mut lines = reader.lines();
@@ -86,11 +91,11 @@ pub async fn ask_user(event: &GuardEvent, rule_id: &str) -> UserDecision {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
     use tempfile::TempDir;
     use tokio::net::UnixListener;
     use tokio::task;
     use tokio::time::sleep;
-    use std::env;
 
     #[tokio::test]
     async fn test_ask_user_allow_and_deny() {
@@ -112,7 +117,10 @@ mod tests {
         });
 
         sleep(Duration::from_millis(10)).await;
-        let event = GuardEvent { pid: 99, path: "/tmp/x".into() };
+        let event = GuardEvent {
+            pid: 99,
+            path: "/tmp/x".into(),
+        };
         let decision = ask_user(&event, "rule-test").await;
         assert_eq!(decision, UserDecision::Allow);
 
@@ -122,7 +130,10 @@ mod tests {
     #[tokio::test]
     async fn test_ask_user_timeout() {
         env::set_var("SAG_DANGER_SOCKET", "/nonexistent/socket");
-        let event = GuardEvent { pid: 1, path: "/".into() };
+        let event = GuardEvent {
+            pid: 1,
+            path: "/".into(),
+        };
         let decision = ask_user(&event, "r0").await;
         assert_eq!(decision, UserDecision::Deny);
     }

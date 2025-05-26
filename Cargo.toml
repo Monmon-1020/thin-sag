@@ -36,3 +36,10 @@ libc = "0.2"
 base64 = "0.21"
 chrono = { version = "0.4", features = ["serde"] }
 tempfile = "3.8.0"
+endpoint-sec = "0.4.3"        
+mach2        = "0.4"   
+futures = "0.3.30"
+
+[dependencies.endpoint-sec-sys]
+version = "0.4.3"
+package = "endpoint-sec-sys" 
