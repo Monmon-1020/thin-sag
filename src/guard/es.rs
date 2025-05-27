@@ -15,23 +15,27 @@ pub fn start_es_listener(tx: Sender<GuardEvent>) -> Result<(), ApiError> {
 
 fn es_loop_blocking(tx: Sender<GuardEvent>) -> Result<(), ApiError> {
     // Set macOS runtime version (e.g., 10.15.0)
+    eprintln!("[guard][ES] entering es_loop_blocking");
     version::set_runtime_version(10, 15, 0);
 
     // Create a client
     let mut client = Client::new(move |client, msg: Message| {
+        eprintln!("[guard] ES callback: event_type={:?}", msg.event_type());
         use sys::es_event_type_t as T;
         match msg.event_type() {
             T::ES_EVENT_TYPE_AUTH_UNLINK
             | T::ES_EVENT_TYPE_AUTH_RENAME
             | T::ES_EVENT_TYPE_AUTH_EXEC
             | T::ES_EVENT_TYPE_AUTH_OPEN => {
+                eprintln!("[guard][ES] matched AUTH event");
                 let ev = GuardEvent::from(&msg);
+                eprintln!("[guard][ES] GuardEvent constructed: {:?}", ev);
                 let _ = tx.send(ev);
             }
             _ => {}
         }
     })?;
-
+    eprintln!("[guard][ES] subscribing to AUTH events");
     // Subscribe to events
     client.subscribe(&[
         sys::es_event_type_t::ES_EVENT_TYPE_AUTH_UNLINK,

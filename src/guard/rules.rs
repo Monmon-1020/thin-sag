@@ -3,6 +3,8 @@
 use crate::guard::GuardEvent;
 use regex::Regex;
 use serde::Deserialize;
+use std::fs;
+use std::path::PathBuf;
 
 /// 危険ルール（path, host, exec のいずれかにマッチすると警告を出す）
 #[derive(Debug, Deserialize)]
@@ -43,18 +45,36 @@ impl DangerRule {
 
 /// `~/.thin-sag/policy.yaml` の `danger_rules` をロードする
 pub fn load_rules() -> Vec<DangerRule> {
-    let path = dirs::home_dir()
-        .expect("home_dir not found")
-        .join(".thin-sag/policy.yaml");
-    let yml = std::fs::read_to_string(path).expect("failed to read ~/.thin-sag/policy.yaml");
-    let doc: serde_yaml::Value = serde_yaml::from_str(&yml).expect("invalid YAML in policy.yaml");
+    let mut policy_path = dirs::home_dir()
+        .expect("home_dir not found");
+    policy_path.push(".thin-sag");
+    policy_path.push("policy.yaml");
 
-    doc["danger_rules"]
-        .as_sequence()
-        .expect("`danger_rules` must be a YAML sequence")
-        .iter()
-        .map(|v| serde_yaml::from_value(v.clone()).expect("invalid DangerRule entry"))
-        .collect()
+    // ファイル読み込み
+    let yml = fs::read_to_string(&policy_path)
+        .unwrap_or_else(|_| {
+            eprintln!("[guard] warning: {} not found, using empty danger_rules", policy_path.display());
+            String::new()
+        });
+
+    // YAML 解析
+    let doc: serde_yaml::Value = if yml.is_empty() {
+        serde_yaml::Value::Mapping(Default::default())
+    } else {
+        serde_yaml::from_str(&yml).expect("invalid YAML in policy.yaml")
+    };
+
+    // danger_rules セクションがあれば読み出し、なければ空 Vec
+    match doc.get("danger_rules").and_then(|v| v.as_sequence()) {
+        Some(seq) => seq
+            .iter()
+            .map(|v| serde_yaml::from_value(v.clone()).expect("invalid DangerRule entry"))
+            .collect(),
+        None => {
+            eprintln!("[guard] warning: danger_rules section missing or not a sequence, no rules loaded");
+            Vec::new()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -90,7 +110,6 @@ mod tests {
             host_regex: Some(Regex::new(r"^.*\.example\.com$").unwrap()),
             exec_regex: None,
         };
-        // HTTPリクエストなど host 部分が event.path に含まれている想定
         let ev = GuardEvent {
             pid: 2,
             path: "api.example.com".into(),
