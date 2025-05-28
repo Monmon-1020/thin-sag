@@ -3,9 +3,10 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
 mod action;
-mod adapter;
+pub mod adapter;
 mod api;
 mod error;
+pub mod guard;
 mod job;
 mod mac_ax;
 mod mask;
@@ -46,6 +47,13 @@ async fn main() -> Result<()> {
             println!("⚠️  CLI モードは廃止されました。API サーバモードを使用してください。");
         }
         Commands::Serve { port } => {
+            // guard エンジンをバックグラウンドで起動
+            tokio::spawn(async {
+                if let Err(e) = guard::start_guard().await {
+                    eprintln!("Guard engine failed: {:?}", e);
+                }
+            });
+
             let router = api::build_router();
             println!("🔌  API サーバ起動 http://127.0.0.1:{port}");
 
