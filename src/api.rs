@@ -1,3 +1,4 @@
+use crate::mcp::{build_mcp_router, build_proxy_router};  // MCPルータをインポート
 use crate::policy::validate_actions;
 use crate::screenshot::screenshot_handler;
 use crate::tree::WindowSelector;
@@ -132,5 +133,7 @@ pub fn build_router() -> Router {
         .route("/snapshot", post(snapshot_handler))
         .route("/windows", get(windows_handler))
         .route("/screenshot", get(screenshot_handler))
+        .nest("/mcp", build_mcp_router())  // MCPルータを追加
+        .nest("/mcp/proxy", build_proxy_router())  // MCPプロキシルータを追加
         .with_state(state)
 }

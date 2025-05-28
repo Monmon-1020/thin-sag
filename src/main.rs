@@ -10,6 +10,7 @@ pub mod guard;
 mod job;
 mod mac_ax;
 mod mask;
+mod mcp; // 新しいMCPモジュールを追加
 mod models;
 mod policy;
 mod screenshot;
