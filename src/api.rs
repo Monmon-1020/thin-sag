@@ -1,4 +1,4 @@
-use crate::mcp::{build_mcp_router, build_proxy_router};  // MCPルータをインポート
+use crate::mcp::build_mcp_router;  // MCPルータをインポート
 use crate::policy::validate_actions;
 use crate::screenshot::screenshot_handler;
 use crate::tree::WindowSelector;
@@ -23,6 +23,7 @@ static SNAP_RESET: Lazy<tokio::sync::Mutex<Instant>> =
 #[derive(Clone)]
 pub struct AppState {
     job_manager: Arc<JobManager>,
+    pub tool_catalog: Arc<crate::mcp::tools::ToolCatalog>,
 }
 
 #[derive(Deserialize)]
@@ -125,6 +126,7 @@ pub async fn windows_handler() -> Json<Vec<WindowInfo>> {
 pub fn build_router() -> Router {
     let state = Arc::new(AppState {
         job_manager: Arc::new(JobManager::new()),
+        tool_catalog: Arc::new(crate::mcp::tools::ToolCatalog::new()),
     });
     Router::new()
         .route("/run", post(run_handler))
@@ -134,6 +136,5 @@ pub fn build_router() -> Router {
         .route("/windows", get(windows_handler))
         .route("/screenshot", get(screenshot_handler))
         .nest("/mcp", build_mcp_router())  // MCPルータを追加
-        .nest("/mcp/proxy", build_proxy_router())  // MCPプロキシルータを追加
         .with_state(state)
 }

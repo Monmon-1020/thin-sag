@@ -11,16 +11,11 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 
 use crate::error::ApiError;
-use super::tools::ToolCatalog;
-
-#[derive(Clone)]
-pub struct McpState {
-    pub tool_catalog: Arc<ToolCatalog>,
-}
+use crate::api::AppState;
 
 /// GET /mcp/tools - 利用可能なツール一覧を返す
 pub async fn list_tools_handler(
-    State(state): State<Arc<McpState>>,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<Value>, ApiError> {
     let tools = state.tool_catalog.list_tools().await;
     Ok(Json(json!({
@@ -31,7 +26,7 @@ pub async fn list_tools_handler(
 
 /// POST /mcp/tools/{tool_name}/call - 指定されたツールを実行
 pub async fn call_tool_handler(
-    State(state): State<Arc<McpState>>,
+    State(state): State<Arc<AppState>>,
     Path(tool_name): Path<String>,
     Json(params): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
@@ -55,13 +50,9 @@ pub async fn status_handler() -> Json<Value> {
 }
 
 /// MCPルータを構築
-pub fn build_mcp_router() -> Router {
-    let tool_catalog = Arc::new(ToolCatalog::new());
-    let state = Arc::new(McpState { tool_catalog });
-
+pub fn build_mcp_router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/tools", get(list_tools_handler))
         .route("/tools/:tool_name/call", post(call_tool_handler))
         .route("/status", get(status_handler))
-        .with_state(state)
 }

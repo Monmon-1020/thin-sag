@@ -68,3 +68,30 @@ pub async fn screenshot_handler(
         Ok((StatusCode::OK, resp).into_response())
     }
 }
+
+// MCPツールから呼び出し可能なスクリーンショット関数
+pub fn take_screenshot() -> Result<String, anyhow::Error> {
+    let tmp_name = format!("screenshot-{}.png", Uuid::new_v4());
+    let tmp_path = std::env::temp_dir().join(tmp_name);
+
+    let output = Command::new("screencapture")
+        .arg("-x")
+        .arg(&tmp_path)
+        .output()
+        .map_err(|e| anyhow!("screencapture command failed: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("screencapture failed: {}", stderr));
+    }
+
+    let image_data = fs::read(&tmp_path)
+        .map_err(|e| anyhow!("failed to read screenshot file: {}", e))?;
+
+    if let Err(e) = fs::remove_file(&tmp_path) {
+        eprintln!("WARNING: remove_file {:?}: {}", tmp_path, e);
+    }
+
+    let b64 = base64::encode(&image_data);
+    Ok(b64)
+}
