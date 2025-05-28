@@ -12,7 +12,6 @@ pub struct ErrorBody {
     error: String,
 }
 
-#[derive(Debug)]
 pub enum ApiError {
     BadRequest(Error),
     NotFound(Error),
